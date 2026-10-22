@@ -5,16 +5,12 @@ import AppIcon from '@/components/AppIcon.vue'
 import PageCard from '@/components/PageCard.vue'
 import { usePwaInstall } from '@/composables/usePwaInstall'
 import { useIncomeStore } from '@/stores/income'
+import { cents, formatCurrency } from '@/utils/currency'
 
 const { canInstall, install } = usePwaInstall()
 const router = useRouter()
 const incomeStore = useIncomeStore()
 const isIncomeSummaryOpen = ref(false)
-
-const formatCurrency = (digits: string) => {
-  const value = Number(digits || 0) / 100
-  return `R$ ${value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-}
 
 const openIncomeRegistration = () => {
   router.push({ name: 'income' })
@@ -61,7 +57,11 @@ const features = [
       </li>
     </ul>
 
-    <aside class="income-fly-card glass" :class="{ expanded: isIncomeSummaryOpen }" aria-label="Rendimentos cadastrados">
+    <aside
+      class="income-fly-card glass"
+      :class="{ expanded: isIncomeSummaryOpen }"
+      aria-label="Rendimentos cadastrados"
+    >
       <button
         class="income-icons-button"
         type="button"
@@ -75,27 +75,38 @@ const features = [
         :aria-expanded="isIncomeSummaryOpen"
         @click="toggleIncomeSummary"
       >
-        <span v-if="!incomeStore.items.length" class="income-summary-plus" aria-hidden="true">+</span>
+        <span v-if="!incomeStore.items.length" class="income-summary-plus" aria-hidden="true"
+          >+</span
+        >
         <span v-else-if="!isIncomeSummaryOpen" class="income-icon-stack" aria-hidden="true">
-          <AppIcon v-for="item in incomeStore.items" :key="item.id" :name="item.icon" class="income-summary-icon" />
+          <AppIcon
+            v-for="item in incomeStore.items"
+            :key="item.id"
+            :name="item.icon"
+            class="income-summary-icon"
+          />
         </span>
         <span v-else class="income-summary-close" aria-hidden="true">×</span>
       </button>
       <div v-if="isIncomeSummaryOpen" class="income-summary-menu">
         <div class="income-detail-list">
-          <div v-for="item in incomeStore.items" :key="`detail-${item.id}`" class="income-detail-row">
+          <article
+            v-for="item in incomeStore.items"
+            :key="`detail-${item.id}`"
+            class="income-detail-card"
+          >
             <AppIcon :name="item.icon" class="income-detail-icon" />
             <span class="income-detail-label">{{ item.label }}</span>
-            <strong>{{ formatCurrency(item.amount) }}</strong>
-          </div>
+            <strong>{{ formatCurrency(cents(item.amount)) }}</strong>
+          </article>
         </div>
         <div class="income-summary-row">
           <span>Total tributável</span>
-          <strong>{{ formatCurrency(String(Math.round(incomeStore.taxableTotal * 100))) }}</strong>
+          <strong>{{ formatCurrency(incomeStore.taxableTotal) }}</strong>
         </div>
         <div class="income-summary-row">
           <span>Rendimentos isentos</span>
-          <strong>{{ formatCurrency(String(Math.round(incomeStore.exemptTotal * 100))) }}</strong>
+          <strong>{{ formatCurrency(incomeStore.exemptTotal) }}</strong>
         </div>
         <div class="income-summary-row">
           <span>Dependentes</span>
@@ -215,31 +226,37 @@ const features = [
 
 .income-summary-menu {
   display: grid;
-  gap: 0.65rem;
-  margin-top: 0.65rem;
-  padding-top: 0.65rem;
+  gap: 0.45rem;
+  margin-top: 0.45rem;
+  padding-top: 0.45rem;
   border-top: 1px solid var(--glass-border);
 }
 
 .income-detail-list {
   display: grid;
-  gap: 0.75rem;
+  gap: 0.45rem;
   padding-bottom: 0.15rem;
 }
 
-.income-detail-row {
+.income-detail-card {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 0.45rem;
+  justify-items: center;
+  gap: 0.2rem;
+  width: min(100%, 18rem);
+  margin-inline: auto;
+  padding: 0.45rem;
+  border: 1px solid var(--glass-border);
+  border-radius: 0.85rem;
+  background: var(--glass-bg-raised-solid);
   color: var(--color-text-muted);
   font-size: 0.72rem;
+  text-align: center;
 }
 
 .income-detail-icon {
-  width: 1.55rem;
-  height: 1.55rem;
-  padding: 0.25rem;
+  width: 1.3rem;
+  height: 1.3rem;
+  padding: 0.2rem;
   border-radius: 50%;
   background: var(--color-accent);
   color: var(--color-on-accent);
@@ -250,7 +267,7 @@ const features = [
   overflow-wrap: anywhere;
 }
 
-.income-detail-row strong {
+.income-detail-card strong {
   color: var(--color-text);
   font-size: 0.75rem;
   white-space: nowrap;
