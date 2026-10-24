@@ -5,7 +5,7 @@ import { cents } from '@/utils/currency'
 const MONTHS_PER_YEAR = 12
 const annualize = (amountInCents: number) => amountInCents * MONTHS_PER_YEAR
 
-export type IncomeCategory = 'clt' | 'proLabore' | 'autonomo' | 'aposentadoria' | 'aluguéis'
+export type IncomeCategory = 'clt' | 'proLabore' | 'autonomo' | 'aposentadoria' | 'alugueis'
 export type DependentIncome = 'none' | 'estagio' | 'pensao' | 'outros'
 
 export interface RegisteredDependent {
@@ -31,7 +31,7 @@ export const incomeCategoryLabels: Record<IncomeCategory, string> = {
   proLabore: 'Pró-labore',
   autonomo: 'Autônomo / Freelance',
   aposentadoria: 'Aposentadoria / Pensão',
-  aluguéis: 'Aluguéis',
+  alugueis: 'Aluguéis',
 }
 
 export const dependentIncomeLabels: Record<DependentIncome, string> = {
