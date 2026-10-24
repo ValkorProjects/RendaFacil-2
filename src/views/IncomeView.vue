@@ -96,7 +96,11 @@ const saveIncomeAndReturn = () => {
         Informe os valores mensais recebidos para preparar sua declaração anual de IRPF.
       </p>
 
-      <section v-if="incomeStore.registrations.length" class="saved-section glass" aria-labelledby="saved-income-title">
+      <section
+        v-if="incomeStore.registrations.length"
+        class="saved-section glass"
+        aria-labelledby="saved-income-title"
+      >
         <div class="section-heading">
           <div>
             <p class="section-kicker">Cadastros</p>
@@ -199,7 +203,11 @@ const saveIncomeAndReturn = () => {
         </div>
 
         <div class="entry-list">
-          <article v-for="(income, index) in incomeStore.draftIncomes" :key="income.id" class="entry-card">
+          <article
+            v-for="(income, index) in incomeStore.draftIncomes"
+            :key="income.id"
+            class="entry-card"
+          >
             <div class="entry-topline">
               <span>Fonte de renda {{ index + 1 }}</span>
               <button

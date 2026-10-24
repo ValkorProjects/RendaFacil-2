@@ -117,7 +117,10 @@ export const useIncomeStore = defineStore('income', () => {
   }
 
   const draftTaxableTotal = computed(() => {
-    const holderTotal = draftIncomes.value.reduce((total, income) => total + cents(income.amount), 0)
+    const holderTotal = draftIncomes.value.reduce(
+      (total, income) => total + cents(income.amount),
+      0,
+    )
     const dependentTotal = draftDependents.value.reduce((total, dependent) => {
       if (dependent.incomeType === 'estagio' || dependent.incomeType === 'outros') {
         return total + cents(dependent.amount)
