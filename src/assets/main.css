@@ -19,6 +19,7 @@
 
   --glass-bg: rgb(255 255 255 / 0.48);
   --glass-bg-raised: rgb(255 255 255 / 0.72);
+  --glass-bg-raised-solid: #f8fafc;
   --glass-border: rgb(255 255 255 / 0.7);
   --glass-highlight: rgb(255 255 255 / 0.85);
   --glass-shadow: rgb(30 41 59 / 0.16);
@@ -42,6 +43,7 @@
 
     --glass-bg: rgb(30 41 59 / 0.45);
     --glass-bg-raised: rgb(255 255 255 / 0.13);
+    --glass-bg-raised-solid: #1e293b;
     --glass-border: rgb(255 255 255 / 0.14);
     --glass-highlight: rgb(255 255 255 / 0.2);
     --glass-shadow: rgb(0 0 0 / 0.45);
