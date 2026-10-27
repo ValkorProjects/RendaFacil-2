@@ -7,7 +7,7 @@ import AppIcon, { type IconName } from '@/components/AppIcon.vue'
 const items: { name: string; label: string; icon: IconName }[] = [
   { name: 'home', label: 'Home', icon: 'home' },
   { name: 'income', label: '+Renda', icon: 'income' },
-  { name: 'user', label: 'User', icon: 'user' },
+  { name: 'user', label: 'Perfil', icon: 'user' },
   { name: 'settings', label: 'Settings', icon: 'settings' },
   { name: 'info', label: 'Info', icon: 'info' },
 ]
