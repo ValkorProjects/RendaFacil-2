@@ -204,7 +204,7 @@ The solid backdrop used for the home-screen icons is set in `pwa-assets.config.t
 
 ## Supabase
 
-Everything needed on the app side is in place, but nothing talks to Supabase until credentials are added. Until then the app runs normally and the User page reports that Supabase isn't configured.
+Everything needed on the app side is in place, but nothing talks to Supabase until credentials are added. Until then the app runs normally and the **Perfil** page offers visitor access, with account registration and sign-in unavailable.
 
 ### Connecting a project
 
@@ -217,7 +217,8 @@ Everything needed on the app side is in place, but nothing talks to Supabase unt
    VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
    ```
 
-4. Restart the dev server. The User page should now say Supabase is configured.
+4. In **Authentication → URL Configuration**, set the Site URL and allow the profile redirect URL (`http://localhost:5173/user` for local development, plus the deployed app's `/user` URL). Include the base path if the app is hosted in a subdirectory.
+5. Enable the Email provider and configure confirmation emails. Restart the dev server; **Perfil** now offers **Entrar** and **Criar conta**.
 
 > **Security:** every `VITE_` variable is bundled into the code sent to the browser. Only the publishable key belongs here — never a `secret` / `service_role` key. Protect your data with [Row Level Security](https://supabase.com/docs/guides/database/postgres/row-level-security) policies on every table.
 
@@ -233,11 +234,45 @@ const { data, error } = await getSupabase().from('your_table').select()
 
 ### Authentication
 
-`src/stores/auth.ts` listens for auth changes and exposes the current `session` and `user`. Sign-in and sign-out go through the client; the store updates by itself:
+[The auth store](src/stores/auth.ts) listens for auth changes and exposes `session`, `user`, `ready` and `isGuest`, plus actions for sign-in, registration, profile updates and sign-out. Both signed-out visitors and anonymous Supabase users are shown as visitors.
+
+[The profile page](src/views/UserView.vue) displays and edits name, email and optional contact phone. Names and phones are saved in Supabase Auth user metadata (`full_name`, `phone`), so no extra database table or migration is required. These are profile details, never authorization claims. Contact phone edits do not change the phone identity used for SMS authentication.
+
+Email changes use `auth.updateUser` and keep showing the current email until Supabase confirms the new address. With Secure Email Change enabled, follow the confirmation messages sent to both addresses. Registration also handles projects that require email confirmation before a session is created.
+
+Example store usage:
+
+The profile also lists dependents saved in the income store, including those without income, and
+offers password changes (current password, new password, confirmation), sign-out and permanent
+account deletion with a centered confirmation dialog. Income and dependents currently live only
+in memory for the current session; they are cleared when an authenticated account signs out or
+changes. They are not yet synchronized to a database or retained after a page reload.
+
+Account deletion requires deploying [the delete-account Edge Function](supabase/functions/delete-account/index.ts)
+to the same Supabase project used by the frontend:
+
+```bash
+npx supabase functions deploy delete-account --project-ref YOUR_PROJECT_REF --no-verify-jwt
+```
+
+The function validates the bearer token using `auth.getUser`, rejects anonymous users, revokes
+sessions and deletes only the authenticated user via the Admin API. `--no-verify-jwt` bypasses
+the gateway's legacy JWT check; authentication is still required and checked inside the function.
+Supabase supplies `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` to hosted functions. Never add
+the service role key to frontend environment variables. Until this function is deployed, account
+deletion shows an error and does not report success. Future database tables and storage objects
+owned by a user must have an explicit cleanup policy before being added to this deletion flow.
+Existing access tokens expire naturally even after sessions are revoked; sensitive future APIs
+must check the live user/session rather than relying on a JWT signature alone.
+
+Verify on a disposable test account: cancel deletion and confirm the account still works, then
+confirm deletion and verify the account can no longer sign in. Password tests should confirm that
+an incorrect current password fails and that only the new password works after a successful change.
 
 ```ts
-await getSupabase().auth.signInWithPassword({ email, password })
-await getSupabase().auth.signOut()
+const auth = useAuthStore()
+await auth.signIn(email, password)
+await auth.signOut()
 ```
 
 ```ts
@@ -246,6 +281,8 @@ import { useAuthStore } from '@/stores/auth'
 
 const { user } = storeToRefs(useAuthStore())
 ```
+
+Run `npm test` for profile validation and the account lifecycle tests. They exercise the auth store and Supabase SDK with isolated HTTP fixtures and never contact a real project. To verify the live integration after configuring credentials: create and confirm an account, edit the name and phone, reload, request an email change, confirm it, and sign out.
 
 ### Typed queries
 

@@ -79,7 +79,7 @@ const saveInlineEdit = () => {
   incomeStore.updateRegistration({
     id: editingRegistrationId.value,
     incomes: editingIncomes.value.filter((income) => cents(income.amount) > 0),
-    dependents: editingDependents.value.filter((dependent) => cents(dependent.amount) > 0),
+    dependents: editingDependents.value,
   })
   cancelInlineEdit()
 }
@@ -170,15 +170,15 @@ const saveIncomeAndReturn = () => {
                 <strong v-else>{{ formatCurrency(cents(income.amount)) }}</strong>
               </div>
               <div
-                v-for="(dependent, index) in registration.dependents.filter(
-                  (item) => item.incomeType !== 'none',
-                )"
+                v-for="(dependent, index) in registration.dependents"
                 :key="dependent.id"
                 class="saved-entry"
               >
                 <span>{{ dependentIncomeLabels[dependent.incomeType] }}</span>
                 <Money3Component
-                  v-if="editingRegistrationId === registration.id"
+                  v-if="
+                    editingRegistrationId === registration.id && dependent.incomeType !== 'none'
+                  "
                   :model-value="editingDependents[index]?.amount ?? ''"
                   class="saved-money-input"
                   v-bind="moneyConfig"
@@ -186,7 +186,9 @@ const saveIncomeAndReturn = () => {
                   aria-label="Editar valor do rendimento do dependente"
                   @update:model-value="updateEditingDependentAmount(index, $event)"
                 />
-                <strong v-else>{{ formatCurrency(cents(dependent.amount)) }}</strong>
+                <strong v-else-if="dependent.incomeType !== 'none'">{{
+                  formatCurrency(cents(dependent.amount))
+                }}</strong>
               </div>
             </div>
           </article>
