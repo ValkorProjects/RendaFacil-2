@@ -51,24 +51,35 @@ const errorMessage = ref('')
 const successMessage = ref('')
 const password = reactive({ current: '', next: '', confirmation: '' })
 const changingPassword = ref(false)
+const passwordError = ref('')
+const passwordDialog = ref<HTMLDialogElement | null>(null)
 const deleting = ref(false)
 const deleteError = ref('')
 const deleteDialog = ref<HTMLDialogElement | null>(null)
 
 function clearPassword() {
   Object.assign(password, { current: '', next: '', confirmation: '' })
+  passwordError.value = ''
+}
+
+function openPasswordDialog() {
+  if (busy.value) return
+  clearMessages()
+  clearPassword()
+  passwordDialog.value?.showModal()
 }
 
 async function changePassword() {
   if (busy.value) return
   clearMessages()
+  passwordError.value = ''
   const validationError = validatePasswordChange(
     password.current,
     password.next,
     password.confirmation,
   )
   if (validationError) {
-    errorMessage.value = validationError
+    passwordError.value = validationError
     return
   }
   const accountId = user.value?.id
@@ -76,11 +87,14 @@ async function changePassword() {
   changingPassword.value = true
   try {
     await auth.changePassword(password.current, password.next, password.confirmation)
-    if (user.value?.id === accountId) successMessage.value = 'Sua senha foi alterada com sucesso.'
+    if (user.value?.id === accountId) {
+      passwordDialog.value?.close()
+      successMessage.value = 'Sua senha foi alterada com sucesso.'
+    }
   } catch (error) {
-    if (user.value?.id === accountId) errorMessage.value = authErrorMessage(error)
+    if (user.value?.id === accountId) passwordError.value = authErrorMessage(error)
   } finally {
-    clearPassword()
+    Object.assign(password, { current: '', next: '', confirmation: '' })
     busy.value = false
     changingPassword.value = false
   }
@@ -122,6 +136,7 @@ watch(
   () => user.value?.id,
   () => {
     clearPassword()
+    passwordDialog.value?.close()
     deleteDialog.value?.close()
     deleteError.value = ''
     editing.value = false
@@ -348,16 +363,40 @@ async function signOut() {
           </dl>
         </section>
 
-        <section class="details-panel" aria-labelledby="security-title">
+        <button
+          type="button"
+          class="secondary-button password-trigger"
+          aria-haspopup="dialog"
+          aria-controls="password-dialog"
+          :disabled="busy"
+          @click="openPasswordDialog"
+        >
+          Trocar senha
+        </button>
+
+        <dialog
+          id="password-dialog"
+          ref="passwordDialog"
+          class="account-dialog password-dialog"
+          aria-labelledby="security-title"
+          aria-describedby="security-description"
+          :aria-busy="changingPassword"
+          @cancel="changingPassword && $event.preventDefault()"
+          @keydown.esc.prevent="!changingPassword && passwordDialog?.close()"
+          @close="clearPassword"
+        >
           <div class="section-heading">
             <div>
               <h2 id="security-title">Trocar senha</h2>
-              <p>Use uma senha exclusiva para proteger sua conta.</p>
+              <p id="security-description">Use uma senha exclusiva para proteger sua conta.</p>
             </div>
           </div>
           <form novalidate @submit.prevent="changePassword">
             <fieldset class="fields" :disabled="busy">
               <legend class="sr-only">Alterar senha de acesso</legend>
+              <p v-if="passwordError" class="notice notice-error" role="alert">
+                {{ passwordError }}
+              </p>
               <label class="field" for="current-password">
                 Senha atual
                 <input
@@ -365,6 +404,7 @@ async function signOut() {
                   v-model="password.current"
                   type="password"
                   autocomplete="current-password"
+                  autofocus
                   required
                 />
               </label>
@@ -397,9 +437,12 @@ async function signOut() {
               <button type="submit" class="button">
                 {{ changingPassword ? 'Alterando senha…' : 'Salvar nova senha' }}
               </button>
+              <button type="button" class="secondary-button" @click="passwordDialog?.close()">
+                Cancelar
+              </button>
             </fieldset>
           </form>
-        </section>
+        </dialog>
       </template>
 
       <template v-else>
@@ -562,7 +605,7 @@ async function signOut() {
 
     <dialog
       ref="deleteDialog"
-      class="delete-dialog"
+      class="account-dialog delete-dialog"
       aria-labelledby="delete-title"
       aria-describedby="delete-description"
       :aria-busy="deleting"
@@ -849,7 +892,7 @@ async function signOut() {
   cursor: pointer;
 }
 
-.delete-dialog {
+.account-dialog {
   position: fixed;
   inset: 0;
   width: min(30rem, calc(100% - 2rem));
@@ -865,9 +908,20 @@ async function signOut() {
   text-align: left;
 }
 
-.delete-dialog::backdrop {
+.account-dialog::backdrop {
   background: #10182899;
   backdrop-filter: blur(4px);
+}
+
+.password-trigger {
+  width: 100%;
+}
+
+.password-dialog {
+  width: min(34rem, calc(100% - 2rem));
+  padding: 1.25rem;
+  border-radius: 1.25rem;
+  color: var(--color-text-muted);
 }
 
 .delete-dialog h2 {
@@ -955,7 +1009,8 @@ fieldset:disabled {
 }
 
 @media (max-width: 25rem) {
-  .details-panel {
+  .details-panel,
+  .password-dialog {
     padding: 1rem;
   }
 
