@@ -105,6 +105,8 @@ Then open the "Network" URL that Vite prints. Note that installing the PWA does 
 | `npm run build`               | Type-check, then build for production into `dist/`              |
 | `npm run preview`             | Serve the production build locally                              |
 | `npm run type-check`          | Type-check the project with `vue-tsc`                           |
+| `npm test`                    | Run the unit tests once with Vitest                             |
+| `npm run test:watch`          | Run the unit tests and re-run them on every change              |
 | `npm run lint`                | Lint with ESLint and fix what can be fixed automatically        |
 | `npm run format`              | Format `src/` with Prettier                                     |
 | `npm run generate-pwa-assets` | Regenerate the app icons in `public/` from `public/favicon.svg` |
@@ -112,6 +114,8 @@ Then open the "Network" URL that Vite prints. Note that installing the PWA does 
 ## Project structure
 
 ```text
+├── docs/
+│   └── calculo-irpf-2026.md How the income tax engine calculates (formulas and sources)
 ├── public/                  Static files copied as-is (favicon and PWA icons)
 ├── src/
 │   ├── assets/main.css      Global styles and design tokens (colours, glass effect)
@@ -121,6 +125,7 @@ Then open the "Network" URL that Vite prints. Note that installing the PWA does 
 │   │   └── PageCard.vue     Glass card used by every sample page
 │   ├── composables/
 │   │   └── usePwaInstall.ts In-app "Install app" button logic
+│   ├── irpf/                Income tax engine: pure functions, money in cents, tests in __tests__/
 │   ├── lib/supabase.ts      Supabase client
 │   ├── router/index.ts      Route definitions
 │   ├── stores/auth.ts       Pinia store tracking the Supabase session
@@ -132,7 +137,8 @@ Then open the "Network" URL that Vite prints. Note that installing the PWA does 
 ├── .env.example             Template for the environment variables
 ├── index.html               HTML entry point
 ├── pwa-assets.config.ts     Icon generation settings
-└── vite.config.ts           Vite and PWA (manifest, service worker) settings
+├── vite.config.ts           Vite and PWA (manifest, service worker) settings
+└── vitest.config.ts         Unit test settings
 ```
 
 Imports can use `@/` as a shortcut for `src/`, e.g. `import PageCard from '@/components/PageCard.vue'`.
