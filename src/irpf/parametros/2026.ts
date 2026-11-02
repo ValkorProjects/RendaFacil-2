@@ -22,3 +22,5 @@ export const PARAMETROS_2026 = {
   simplificado: { percentual: 20, teto: 1_764_000 },// 20%, teto de 17.640,00
   tetoPrevidenciaMensal: 98_809,                   // 988,09, só para o aviso do RF-12
 } as const;
+
+export type ParametrosIrpf = typeof PARAMETROS_2026;
