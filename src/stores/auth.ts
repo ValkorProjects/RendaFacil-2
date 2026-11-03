@@ -70,7 +70,7 @@ export const useAuthStore = defineStore('auth', () => {
       { emailRedirectTo: profileRedirectUrl() },
     )
     if (error) throw error
-    return { emailConfirmationPending: Boolean(data.user.new_email) }
+    return { emailConfirmationPending: Boolean(data?.user?.new_email) }
   }
 
   async function signOut() {
