@@ -27,7 +27,7 @@ const dependents = computed(() =>
     })),
   ),
 )
-const { user, ready, isGuest } = storeToRefs(auth)
+const { user, ready, isGuest, initializationError } = storeToRefs(auth)
 const profile = computed(() => readProfile(user.value))
 const displayName = computed(() => profile.value.name || 'Minha conta')
 const initials = computed(() =>
@@ -255,13 +255,16 @@ async function signOut() {
         </div>
         <div class="identity">
           <span class="account-badge">{{ isGuest ? 'Visitante' : 'Conta cadastrada' }}</span>
-          <h2>{{ isGuest ? 'Acesso como visitante' : displayName }}</h2>
-          <p v-if="isGuest">Você pode continuar usando o site sem uma conta.</p>
+          <h2>{{ isGuest ? 'Entre para continuar' : displayName }}</h2>
+          <p v-if="isGuest">Faça login ou crie sua conta para acessar o aplicativo.</p>
           <p v-else>{{ profile.email || 'E-mail não informado' }}</p>
         </div>
       </section>
 
       <p v-if="errorMessage" class="notice notice-error" role="alert">{{ errorMessage }}</p>
+      <p v-if="initializationError" class="notice notice-error" role="alert">
+        Não foi possível verificar sua sessão. {{ initializationError }}
+      </p>
       <p v-if="successMessage" class="notice notice-success" role="status">
         {{ successMessage }}
       </p>
@@ -546,13 +549,10 @@ async function signOut() {
             </form>
           </template>
           <p v-else class="notice">
-            O acesso e o cadastro de contas estão indisponíveis no momento. Você pode continuar como
-            visitante.
+            O acesso e o cadastro de contas estão indisponíveis no momento. Tente novamente mais
+            tarde.
           </p>
         </section>
-        <RouterLink :to="{ name: 'home' }" class="text-button visitor-link">
-          Continuar como visitante
-        </RouterLink>
       </template>
 
       <section class="details-panel" aria-labelledby="profile-dependents-title">
@@ -836,11 +836,6 @@ async function signOut() {
 
 .text-button:hover {
   text-decoration: underline;
-}
-
-.visitor-link {
-  justify-self: center;
-  text-align: center;
 }
 
 .dependent-list {

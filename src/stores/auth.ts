@@ -3,6 +3,7 @@ import { defineStore } from 'pinia'
 import type { Session } from '@supabase/supabase-js'
 import { getSupabase, isSupabaseConfigured } from '@/lib/supabase'
 import {
+  authErrorMessage,
   normalizeProfile,
   validateProfile,
   validatePasswordChange,
@@ -14,6 +15,7 @@ export const useAuthStore = defineStore('auth', () => {
   const income = useIncomeStore()
   const session = shallowRef<Session | null>(null)
   const ready = ref(!isSupabaseConfigured)
+  const initializationError = ref('')
   const user = computed(() => session.value?.user ?? null)
   const isGuest = computed(() => !user.value || Boolean(user.value.is_anonymous))
 
@@ -22,14 +24,32 @@ export const useAuthStore = defineStore('auth', () => {
 
   // Fires once with the persisted session, then again on every sign-in/out.
   if (isSupabaseConfigured) {
-    const { data } = getSupabase().auth.onAuthStateChange((_event, newSession) => {
-      if (session.value?.user.id && session.value.user.id !== newSession?.user.id) {
-        income.clearAccountData()
-      }
-      session.value = newSession
+    try {
+      const client = getSupabase()
+      const { data } = client.auth.onAuthStateChange((_event, newSession) => {
+        if (session.value?.user.id && session.value.user.id !== newSession?.user.id) {
+          income.clearAccountData()
+        }
+        session.value = newSession
+        initializationError.value = ''
+        ready.value = true
+      })
+      void client.auth
+        .getSession()
+        .then(({ data: sessionData, error }) => {
+          if (error) throw error
+          if (!session.value) session.value = sessionData.session
+          ready.value = true
+        })
+        .catch((error: unknown) => {
+          initializationError.value = authErrorMessage(error)
+          ready.value = true
+        })
+      onScopeDispose(() => data.subscription.unsubscribe())
+    } catch (error: unknown) {
+      initializationError.value = authErrorMessage(error)
       ready.value = true
-    })
-    onScopeDispose(() => data.subscription.unsubscribe())
+    }
   }
 
   async function signIn(email: string, password: string) {
@@ -113,6 +133,7 @@ export const useAuthStore = defineStore('auth', () => {
     session,
     user,
     ready,
+    initializationError,
     isGuest,
     signIn,
     signUp,

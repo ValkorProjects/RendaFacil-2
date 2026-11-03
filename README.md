@@ -74,10 +74,10 @@ cp .env.example .env
 
 | Variable                        | Required | Description                        |
 | ------------------------------- | -------- | ---------------------------------- |
-| `VITE_SUPABASE_URL`             | No\*     | Supabase project URL               |
-| `VITE_SUPABASE_PUBLISHABLE_KEY` | No\*     | Supabase publishable (or anon) key |
+| `VITE_SUPABASE_URL`             | Yes      | Supabase project URL               |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | Yes      | Supabase publishable (or anon) key |
 
-\* The app runs without them; they are only needed once you start using Supabase. See [Supabase](#supabase).
+The app requires both variables to verify the user's session before allowing access. See [Supabase](#supabase).
 
 Restart the dev server after changing `.env`.
 
@@ -204,7 +204,7 @@ The solid backdrop used for the home-screen icons is set in `pwa-assets.config.t
 
 ## Supabase
 
-Everything needed on the app side is in place, but nothing talks to Supabase until credentials are added. Until then the app runs normally and the **Perfil** page offers visitor access, with account registration and sign-in unavailable.
+The app checks the persisted Supabase session before showing the main application. Users must sign in or create an account before accessing the other pages.
 
 ### Connecting a project
 
@@ -234,7 +234,7 @@ const { data, error } = await getSupabase().from('your_table').select()
 
 ### Authentication
 
-[The auth store](src/stores/auth.ts) listens for auth changes and exposes `session`, `user`, `ready` and `isGuest`, plus actions for sign-in, registration, profile updates and sign-out. Both signed-out visitors and anonymous Supabase users are shown as visitors.
+[The auth store](src/stores/auth.ts) listens for auth changes and exposes `session`, `user`, `ready`, `initializationError` and `isGuest`, plus actions for sign-in, registration, profile updates and sign-out. Signed-out and anonymous Supabase users remain on the profile page until they authenticate.
 
 [The profile page](src/views/UserView.vue) displays and edits name, email and optional contact phone. Names and phones are saved in Supabase Auth user metadata (`full_name`, `phone`), so no extra database table or migration is required. These are profile details, never authorization claims. Contact phone edits do not change the phone identity used for SMS authentication.
 

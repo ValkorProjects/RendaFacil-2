@@ -1,20 +1,25 @@
 <script setup lang="ts">
+import { storeToRefs } from 'pinia'
 import { RouterView } from 'vue-router'
 import BottomNav from '@/components/BottomNav.vue'
+import UserView from '@/views/UserView.vue'
 import { useAuthStore } from '@/stores/auth'
 
-useAuthStore()
+const auth = useAuthStore()
+const { ready, isGuest } = storeToRefs(auth)
 </script>
 
 <template>
   <main class="app-main">
-    <RouterView v-slot="{ Component }">
+    <p v-if="!ready" class="auth-loading" role="status">Verificando sua sessão…</p>
+    <UserView v-else-if="isGuest" />
+    <RouterView v-else v-slot="{ Component }">
       <Transition name="page" mode="out-in">
         <component :is="Component" />
       </Transition>
     </RouterView>
   </main>
-  <BottomNav />
+  <BottomNav v-if="ready && !isGuest" />
 </template>
 
 <style scoped>
@@ -24,6 +29,10 @@ useAuthStore()
   min-height: 100dvh;
   padding: calc(1.5rem + env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right))
     var(--nav-clearance) max(1rem, env(safe-area-inset-left));
+}
+
+.auth-loading {
+  color: var(--color-text-muted);
 }
 
 .page-enter-active,
