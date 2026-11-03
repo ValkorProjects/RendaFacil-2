@@ -92,7 +92,7 @@ export const useAuthStore = defineStore('auth', () => {
     })
     if (verificationError) throw verificationError
     if (data.user.id !== accountId || user.value?.id !== accountId)
-      throw new Error('Conta alterada.')
+      throw new Error('Conta Incorreta')
     const { error } = await client.auth.updateUser({ password, current_password: current })
     if (error) throw error
   }
