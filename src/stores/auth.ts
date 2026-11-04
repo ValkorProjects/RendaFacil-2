@@ -16,6 +16,7 @@ export const useAuthStore = defineStore('auth', () => {
   const session = shallowRef<Session | null>(null)
   const ready = ref(!isSupabaseConfigured)
   const initializationError = ref('')
+  const recoveryPending = ref(false)
   const user = computed(() => session.value?.user ?? null)
   const isGuest = computed(() => !user.value || Boolean(user.value.is_anonymous))
 
@@ -26,11 +27,12 @@ export const useAuthStore = defineStore('auth', () => {
   if (isSupabaseConfigured) {
     try {
       const client = getSupabase()
-      const { data } = client.auth.onAuthStateChange((_event, newSession) => {
+      const { data } = client.auth.onAuthStateChange((event, newSession) => {
         if (session.value?.user.id && session.value.user.id !== newSession?.user.id) {
           income.clearAccountData()
         }
         session.value = newSession
+        recoveryPending.value = event === 'PASSWORD_RECOVERY'
         initializationError.value = ''
         ready.value = true
       })
@@ -71,6 +73,26 @@ export const useAuthStore = defineStore('auth', () => {
     })
     if (error) throw error
     return { needsConfirmation: !data.session }
+  }
+
+  async function resendConfirmation(email: string) {
+    const { error } = await getSupabase().auth.resend({ type: 'signup', email: email.trim() })
+    if (error) throw error
+  }
+
+  async function requestPasswordReset(email: string) {
+    const { error } = await getSupabase().auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: profileRedirectUrl(),
+    })
+    if (error) throw error
+  }
+
+  async function resetPassword(password: string, confirmation: string) {
+    if (password.length < 8) throw new Error('Crie uma senha com pelo menos 8 caracteres.')
+    if (password !== confirmation) throw new Error('A confirmação da senha não corresponde.')
+    const { error } = await getSupabase().auth.updateUser({ password })
+    if (error) throw error
+    recoveryPending.value = false
   }
 
   async function updateProfile(fields: ProfileFields) {
@@ -141,5 +163,9 @@ export const useAuthStore = defineStore('auth', () => {
     changePassword,
     deleteAccount,
     signOut,
+    resendConfirmation,
+    requestPasswordReset,
+    resetPassword,
+    recoveryPending,
   }
 })

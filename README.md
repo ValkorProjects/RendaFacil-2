@@ -236,15 +236,15 @@ const { data, error } = await getSupabase().from('your_table').select()
 
 [The auth store](src/stores/auth.ts) listens for auth changes and exposes `session`, `user`, `ready`, `initializationError` and `isGuest`, plus actions for sign-in, registration, profile updates and sign-out. Signed-out and anonymous Supabase users remain on the profile page until they authenticate.
 
-[The profile page](src/views/UserView.vue) displays and edits name, email and optional contact phone. Names and phones are saved in Supabase Auth user metadata (`full_name`, `phone`), so no extra database table or migration is required. These are profile details, never authorization claims. Contact phone edits do not change the phone identity used for SMS authentication.
+[The profile page](src/views/UserView.vue) displays and edits name, email and optional contact phone. Names and phones are saved in Supabase Auth user metadata (`full_name`, `phone`) and mirrored to `public.profiles` by the migration trigger. These are profile details, never authorization claims. Contact phone edits do not change the phone identity used for SMS authentication.
 
-Email changes use `auth.updateUser` and keep showing the current email until Supabase confirms the new address. With Secure Email Change enabled, follow the confirmation messages sent to both addresses. Registration also handles projects that require email confirmation before a session is created.
+Email changes use `auth.updateUser` and keep showing the current email until Supabase confirms the new address. With Secure Email Change enabled, follow the confirmation messages sent to both addresses. Registration also handles projects that require email confirmation before a session is created. The access form validates password confirmation, can resend a signup confirmation message, and provides a password recovery flow.
 
 Example store usage:
 
 The profile also lists dependents saved in the income store, including those without income, and
-offers password changes (current password, new password, confirmation), sign-out and permanent
-account deletion with a centered confirmation dialog. Income and dependents currently live only
+offers password changes (current password, new password, confirmation), password recovery, sign-out and permanent
+account deletion with a centered confirmation dialog requiring `EXCLUIR`. Income and dependents currently live only
 in memory for the current session; they are cleared when an authenticated account signs out or
 changes. They are not yet synchronized to a database or retained after a page reload.
 

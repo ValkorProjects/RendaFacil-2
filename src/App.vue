@@ -1,12 +1,25 @@
 <script setup lang="ts">
-import { storeToRefs } from 'pinia'
+import { onMounted, ref, watch } from 'vue'
+import { defineAsyncComponent } from 'vue'
 import { RouterView } from 'vue-router'
 import BottomNav from '@/components/BottomNav.vue'
-import UserView from '@/views/UserView.vue'
-import { useAuthStore } from '@/stores/auth'
 
-const auth = useAuthStore()
-const { ready, isGuest } = storeToRefs(auth)
+const UserView = defineAsyncComponent(() => import('@/views/UserView.vue'))
+const ready = ref(false)
+const isGuest = ref(true)
+
+onMounted(async () => {
+  const { useAuthStore } = await import('@/stores/auth')
+  const auth = useAuthStore()
+  watch(
+    [() => auth.ready, () => auth.isGuest],
+    ([authReady, guest]) => {
+      ready.value = authReady
+      isGuest.value = guest
+    },
+    { immediate: true },
+  )
+})
 </script>
 
 <template>

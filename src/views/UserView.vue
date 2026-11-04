@@ -27,7 +27,7 @@ const dependents = computed(() =>
     })),
   ),
 )
-const { user, ready, isGuest, initializationError } = storeToRefs(auth)
+const { user, ready, isGuest, initializationError, recoveryPending } = storeToRefs(auth)
 const profile = computed(() => readProfile(user.value))
 const displayName = computed(() => profile.value.name || 'Minha conta')
 const initials = computed(() =>
@@ -43,8 +43,8 @@ const pendingEmail = computed(() =>
   user.value?.new_email !== user.value?.email ? user.value?.new_email : '',
 )
 const draft = reactive({ name: '', email: '', phone: '' })
-const access = reactive({ name: '', email: '', phone: '', password: '' })
-const accessMode = ref<'signin' | 'signup'>('signin')
+const access = reactive({ name: '', email: '', phone: '', password: '', confirmation: '' })
+const accessMode = ref<'signin' | 'signup' | 'forgot'>('signin')
 const editing = ref(false)
 const busy = ref(false)
 const errorMessage = ref('')
@@ -53,8 +53,12 @@ const password = reactive({ current: '', next: '', confirmation: '' })
 const changingPassword = ref(false)
 const passwordError = ref('')
 const passwordDialog = ref<HTMLDialogElement | null>(null)
+const resetPasswordDialog = ref<HTMLDialogElement | null>(null)
+const resetPassword = reactive({ next: '', confirmation: '' })
+const resettingPassword = ref(false)
 const deleting = ref(false)
 const deleteError = ref('')
+const deleteConfirmation = ref('')
 const deleteDialog = ref<HTMLDialogElement | null>(null)
 
 function clearPassword() {
@@ -62,11 +66,58 @@ function clearPassword() {
   passwordError.value = ''
 }
 
+function clearResetPassword() {
+  Object.assign(resetPassword, { next: '', confirmation: '' })
+}
+
+function openResetPasswordDialog() {
+  clearMessages()
+  clearResetPassword()
+  resetPasswordDialog.value?.showModal()
+}
+
+async function submitResetPassword() {
+  if (busy.value) return
+  clearMessages()
+  resettingPassword.value = true
+  busy.value = true
+  try {
+    await auth.resetPassword(resetPassword.next, resetPassword.confirmation)
+    resetPasswordDialog.value?.close()
+    successMessage.value = 'Sua senha foi redefinida com sucesso.'
+  } catch (error) {
+    errorMessage.value = authErrorMessage(error)
+  } finally {
+    clearResetPassword()
+    resettingPassword.value = false
+    busy.value = false
+  }
+}
+
 function openPasswordDialog() {
   if (busy.value) return
   clearMessages()
   clearPassword()
   passwordDialog.value?.showModal()
+}
+
+async function resendConfirmation() {
+  if (busy.value) return
+  clearMessages()
+  const validationError = validateProfile({ name: 'Login', email: access.email, phone: '' })
+  if (validationError) {
+    errorMessage.value = validationError
+    return
+  }
+  busy.value = true
+  try {
+    await auth.resendConfirmation(access.email)
+    successMessage.value = 'Um novo link de confirmação foi enviado para seu e-mail.'
+  } catch (error) {
+    errorMessage.value = authErrorMessage(error)
+  } finally {
+    busy.value = false
+  }
 }
 
 async function changePassword() {
@@ -103,6 +154,7 @@ async function changePassword() {
 function openDeleteDialog() {
   if (busy.value) return
   deleteError.value = ''
+  deleteConfirmation.value = ''
   deleteDialog.value?.showModal()
 }
 
@@ -111,6 +163,7 @@ async function deleteAccount() {
   busy.value = true
   deleting.value = true
   deleteError.value = ''
+  deleteConfirmation.value = ''
   clearMessages()
   try {
     await auth.deleteAccount()
@@ -149,6 +202,7 @@ watch(
 function changeAccessMode(mode: 'signin' | 'signup') {
   accessMode.value = mode
   access.password = ''
+  access.confirmation = ''
   clearMessages()
 }
 
@@ -192,6 +246,7 @@ async function submitAccess() {
   if (busy.value || !isSupabaseConfigured) return
   clearMessages()
   const signingUp = accessMode.value === 'signup'
+  const requestingReset = accessMode.value === 'forgot'
   const validationError = validateProfile(
     signingUp ? access : { name: 'Login', email: access.email, phone: '' },
   )
@@ -199,10 +254,27 @@ async function submitAccess() {
     errorMessage.value = validationError
     return
   }
+  if (requestingReset) {
+    busy.value = true
+    try {
+      await auth.requestPasswordReset(access.email)
+      successMessage.value = 'Confira seu e-mail para redefinir sua senha.'
+      accessMode.value = 'signin'
+    } catch (error) {
+      errorMessage.value = authErrorMessage(error)
+    } finally {
+      busy.value = false
+    }
+    return
+  }
   if (!access.password || (signingUp && access.password.length < 8)) {
     errorMessage.value = signingUp
       ? 'Crie uma senha com pelo menos 8 caracteres.'
       : 'Informe sua senha para entrar.'
+    return
+  }
+  if (signingUp && access.password !== access.confirmation) {
+    errorMessage.value = 'A confirmação da senha não corresponde.'
     return
   }
   busy.value = true
@@ -371,7 +443,7 @@ async function signOut() {
           class="secondary-button password-trigger"
           aria-haspopup="dialog"
           aria-controls="password-dialog"
-          :disabled="busy"
+          :disabled="busy || deleteConfirmation !== 'EXCLUIR'"
           @click="openPasswordDialog"
         >
           Trocar senha
@@ -446,6 +518,46 @@ async function signOut() {
             </fieldset>
           </form>
         </dialog>
+        <dialog
+          v-if="recoveryPending"
+          ref="resetPasswordDialog"
+          open
+          class="account-dialog password-dialog"
+          aria-labelledby="reset-title"
+        >
+          <h2 id="reset-title">Defina uma nova senha</h2>
+          <p>Escolha uma senha nova para voltar a acessar sua conta.</p>
+          <form novalidate @submit.prevent="submitResetPassword">
+            <fieldset class="fields" :disabled="busy">
+              <label class="field" for="reset-password">
+                Nova senha
+                <input
+                  id="reset-password"
+                  v-model="resetPassword.next"
+                  type="password"
+                  minlength="8"
+                  required
+                />
+              </label>
+              <label class="field" for="reset-password-confirmation">
+                Confirmar nova senha
+                <input
+                  id="reset-password-confirmation"
+                  v-model="resetPassword.confirmation"
+                  type="password"
+                  minlength="8"
+                  required
+                />
+              </label>
+              <p v-if="errorMessage" class="notice notice-error" role="alert">
+                {{ errorMessage }}
+              </p>
+              <button type="submit" class="button">
+                {{ resettingPassword ? 'Salvando…' : 'Salvar nova senha' }}
+              </button>
+            </fieldset>
+          </form>
+        </dialog>
       </template>
 
       <template v-else>
@@ -453,7 +565,13 @@ async function signOut() {
           <div class="section-heading">
             <div>
               <h2 id="access-title">
-                {{ accessMode === 'signin' ? 'Acesse sua conta' : 'Crie sua conta' }}
+                {{
+                  accessMode === 'signin'
+                    ? 'Acesse sua conta'
+                    : accessMode === 'signup'
+                      ? 'Crie sua conta'
+                      : 'Recupere sua senha'
+                }}
               </h2>
               <p>Entre ou cadastre-se para salvar e editar seus dados pessoais.</p>
             </div>
@@ -482,7 +600,13 @@ async function signOut() {
             <form novalidate @submit.prevent="submitAccess">
               <fieldset :disabled="busy" class="fields">
                 <legend class="sr-only">
-                  {{ accessMode === 'signin' ? 'Entrar na conta' : 'Cadastro' }}
+                  {{
+                    accessMode === 'signin'
+                      ? 'Entrar na conta'
+                      : accessMode === 'signup'
+                        ? 'Cadastro'
+                        : 'Recuperação de senha'
+                  }}
                 </legend>
                 <label v-if="accessMode === 'signup'" class="field" for="access-name">
                   Nome
@@ -520,7 +644,7 @@ async function signOut() {
                     maxlength="25"
                   />
                 </label>
-                <label class="field" for="access-password">
+                <label v-if="accessMode !== 'forgot'" class="field" for="access-password">
                   Senha
                   <input
                     id="access-password"
@@ -533,6 +657,21 @@ async function signOut() {
                     required
                   />
                 </label>
+                <label
+                  v-if="accessMode === 'signup'"
+                  class="field"
+                  for="access-password-confirmation"
+                >
+                  Confirmar senha
+                  <input
+                    id="access-password-confirmation"
+                    v-model="access.confirmation"
+                    type="password"
+                    autocomplete="new-password"
+                    minlength="8"
+                    required
+                  />
+                </label>
                 <p v-if="accessMode === 'signup'" id="password-help" class="field-help">
                   Use pelo menos 8 caracteres.
                 </p>
@@ -542,11 +681,40 @@ async function signOut() {
                       ? 'Aguarde…'
                       : accessMode === 'signin'
                         ? 'Entrar na conta'
-                        : 'Criar minha conta'
+                        : accessMode === 'signup'
+                          ? 'Criar minha conta'
+                          : 'Enviar link de recuperação'
                   }}
                 </button>
               </fieldset>
             </form>
+            <div v-if="accessMode === 'signin'" class="access-links">
+              <button
+                type="button"
+                class="text-button"
+                :disabled="busy"
+                @click="accessMode = 'forgot'"
+              >
+                Esqueci minha senha
+              </button>
+              <button
+                type="button"
+                class="text-button"
+                :disabled="busy"
+                @click="resendConfirmation"
+              >
+                Reenviar confirmação de e-mail
+              </button>
+            </div>
+            <button
+              v-else
+              type="button"
+              class="text-button"
+              :disabled="busy"
+              @click="changeAccessMode('signin')"
+            >
+              Voltar para entrar
+            </button>
           </template>
           <p v-else class="notice">
             O acesso e o cadastro de contas estão indisponíveis no momento. Tente novamente mais
@@ -630,10 +798,14 @@ async function signOut() {
         >
           Cancelar
         </button>
+        <label class="field delete-confirmation" for="delete-confirmation">
+          Digite <strong>EXCLUIR</strong> para confirmar
+          <input id="delete-confirmation" v-model="deleteConfirmation" autocomplete="off" />
+        </label>
         <button
           type="button"
           class="danger-button danger-confirm"
-          :disabled="busy"
+          :disabled="busy || deleteConfirmation !== 'EXCLUIR'"
           @click="deleteAccount"
         >
           {{ deleting ? 'Excluindo…' : 'Sim, excluir minha conta' }}
