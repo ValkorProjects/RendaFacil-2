@@ -443,7 +443,7 @@ async function signOut() {
           class="secondary-button password-trigger"
           aria-haspopup="dialog"
           aria-controls="password-dialog"
-          :disabled="busy || deleteConfirmation !== 'EXCLUIR'"
+          :disabled="busy"
           @click="openPasswordDialog"
         >
           Trocar senha
@@ -1149,7 +1149,7 @@ async function signOut() {
 button:disabled,
 fieldset:disabled {
   opacity: 0.6;
-  cursor: wait;
+  cursor: not-allowed;
 }
 
 .sr-only {
