@@ -314,7 +314,7 @@ async function signOut() {
 </script>
 
 <template>
-  <PageCard eyebrow="Sua conta" title="Meu perfil">
+  <PageCard class="profile-page" eyebrow="Sua conta" title="Meu perfil">
     <p class="intro">Gerencie seus dados, dependentes e a segurança da sua conta.</p>
 
     <p v-if="!ready" class="notice" role="status">Carregando seu perfil…</p>
@@ -823,6 +823,16 @@ async function signOut() {
   font-size: 1rem;
 }
 
+.profile-page {
+  max-width: 52rem;
+  padding: 1.25rem;
+  text-align: left;
+}
+
+.profile-page :deep(.body) {
+  justify-items: stretch;
+}
+
 .account-content {
   display: grid;
   gap: 1.25rem;
@@ -877,8 +887,9 @@ async function signOut() {
 
 .account-badge {
   padding: 0.25rem 0.625rem;
+  border: 1px solid color-mix(in srgb, var(--color-accent), transparent 65%);
   border-radius: 999px;
-  background: var(--glass-bg-raised);
+  background: transparent;
   color: var(--color-accent);
   font-size: 0.75rem;
   font-weight: 700;
@@ -938,9 +949,10 @@ async function signOut() {
 
 .field {
   display: block;
-  color: var(--color-text);
-  font-size: 0.875rem;
-  font-weight: 600;
+  margin: 0.85rem 0 0.35rem;
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+  font-weight: 700;
 }
 
 .optional {
@@ -949,13 +961,11 @@ async function signOut() {
 }
 
 .field input {
-  display: block;
   width: 100%;
-  min-height: 3rem;
-  margin-top: 0.375rem;
-  padding: 0.65rem 0.875rem;
+  min-height: 2.9rem;
+  padding: 0.65rem 0.8rem;
   border: 1px solid var(--glass-border);
-  border-radius: 0.75rem;
+  border-radius: 0.65rem;
   background: var(--glass-bg-raised);
   color: var(--color-text);
   font: inherit;
