@@ -22,7 +22,7 @@
     "vue-router": "^5.4.0"
   },
   "devDependencies": {
-    "@tsconfig/node20": "^20.1.10",
+    "@tsconfig/node24": "^24.0.5",
     "@types/node": "^24.0.0",
     "@vite-pwa/assets-generator": "^2.0.0",
     "@vitejs/plugin-vue": "^6.0.10",

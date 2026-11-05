@@ -49,14 +49,15 @@ What the template ships with today:
 | State      | [Pinia](https://pinia.vuejs.org/)                                                   |
 | PWA        | [vite-plugin-pwa](https://vite-pwa-org.netlify.app/) (Workbox)                      |
 | Backend    | [Supabase](https://supabase.com/) via `@supabase/supabase-js` _(not yet connected)_ |
-| Quality    | ESLint, Prettier, `vue-tsc`                                                         |
+| Quality    | ESLint, Prettier, `vue-tsc`, [Vitest](https://vitest.dev/), GitHub Actions          |
 
 ## Getting started
 
 ### Prerequisites
 
-- [Node.js](https://nodejs.org/) `20.19` or newer (`22.13+` or `24+` also work)
-- npm (bundled with Node.js)
+- [Node.js](https://nodejs.org/) `24.x` (the version in `package.json` → `engines`)
+- npm 11 or newer (bundled with Node.js 24). Use it to add or update dependencies: npm 10 cannot
+  resolve Vite 8's optional peer dependencies and rewrites the lockfile.
 
 ### Install
 
