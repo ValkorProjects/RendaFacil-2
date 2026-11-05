@@ -1146,8 +1146,7 @@ async function signOut() {
   border-color: currentColor;
 }
 
-button:disabled,
-fieldset:disabled {
+button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
