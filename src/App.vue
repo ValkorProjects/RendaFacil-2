@@ -8,17 +8,22 @@ const UserView = defineAsyncComponent(() => import('@/views/UserView.vue'))
 const ready = ref(false)
 const isGuest = ref(true)
 
-onMounted(async () => {
-  const { useAuthStore } = await import('@/stores/auth')
-  const auth = useAuthStore()
-  watch(
-    [() => auth.ready, () => auth.isGuest],
-    ([authReady, guest]) => {
-      ready.value = authReady
-      isGuest.value = guest
-    },
-    { immediate: true },
-  )
+onMounted(() => {
+  const init = () => {
+    void import('@/stores/auth').then(({ useAuthStore }) => {
+      const auth = useAuthStore()
+      watch(
+        [() => auth.ready, () => auth.isGuest],
+        ([authReady, guest]) => {
+          ready.value = authReady
+          isGuest.value = guest
+        },
+        { immediate: true },
+      )
+    })
+  }
+
+  requestAnimationFrame(() => window.setTimeout(init, 0))
 })
 </script>
 
