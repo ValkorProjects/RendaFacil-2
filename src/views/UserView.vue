@@ -1092,13 +1092,6 @@ async function signOut() {
   width: 100%;
 }
 
-.password-dialog {
-  width: min(34rem, calc(100% - 2rem));
-  padding: 1.25rem;
-  border-radius: 1.25rem;
-  color: var(--color-text-muted);
-}
-
 .delete-dialog h2 {
   font-size: 1.25rem;
 }
@@ -1184,7 +1177,7 @@ button:disabled {
 
 @media (max-width: 25rem) {
   .details-panel,
-  .password-dialog {
+  .account-dialog {
     padding: 1rem;
   }
 
