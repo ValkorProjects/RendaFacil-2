@@ -36,4 +36,13 @@ describe('exigirInteiroNaoNegativo', () => {
   it.each([-1, 0.5, Number.NaN, Infinity])('recusa %d', (valor) => {
     expect(() => exigirInteiroNaoNegativo(valor, 'campo')).toThrow('campo')
   })
+
+  it('diz quando o inteiro é grande demais para a conta ser exata', () => {
+    expect(() => exigirInteiroNaoNegativo(Number.MAX_SAFE_INTEGER + 1, 'campo')).toThrow(
+      'campo está fora do intervalo de inteiros seguros',
+    )
+    expect(() => exigirInteiroNaoNegativo(-1, 'campo')).toThrow(
+      'campo deve ser um inteiro maior ou igual a zero',
+    )
+  })
 })

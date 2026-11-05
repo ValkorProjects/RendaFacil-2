@@ -17,7 +17,11 @@ export const somar = <T>(itens: readonly T[], valor: (item: T) => number): numbe
   itens.reduce((total, item) => total + valor(item), 0)
 
 export const exigirInteiroNaoNegativo = (valor: number, campo: string): void => {
-  if (!Number.isSafeInteger(valor) || valor < 0) {
-    throw new RangeError(`${campo} deve ser um inteiro maior ou igual a zero (recebido: ${valor})`)
-  }
+  if (Number.isSafeInteger(valor) && valor >= 0) return
+  // Inteiros acima de 2^53 perdem centavos na soma: o problema é o tamanho, não o formato.
+  const motivo =
+    Number.isInteger(valor) && valor > 0
+      ? 'está fora do intervalo de inteiros seguros'
+      : 'deve ser um inteiro maior ou igual a zero'
+  throw new RangeError(`${campo} ${motivo} (recebido: ${valor})`)
 }
