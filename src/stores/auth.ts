@@ -7,6 +7,14 @@ export const useAuthStore = defineStore('auth', () => {
   const session = shallowRef<Session | null>(null)
   const user = computed(() => session.value?.user ?? null)
 
+  const signIn = (email: string, password: string) =>
+    getSupabase().auth.signInWithPassword({ email, password })
+
+  const signUp = (email: string, password: string) =>
+    getSupabase().auth.signUp({ email, password })
+
+  const signOut = () => getSupabase().auth.signOut()
+
   // Fires once with the persisted session, then again on every sign-in/out.
   if (isSupabaseConfigured) {
     getSupabase().auth.onAuthStateChange((_event, newSession) => {
@@ -14,5 +22,5 @@ export const useAuthStore = defineStore('auth', () => {
     })
   }
 
-  return { session, user }
+  return { session, user, signIn, signUp, signOut }
 })
