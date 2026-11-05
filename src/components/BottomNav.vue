@@ -6,9 +6,9 @@ import AppIcon, { type IconName } from '@/components/AppIcon.vue'
 // `name` is the route name from src/router/index.ts.
 const items: { name: string; label: string; icon: IconName }[] = [
   { name: 'home', label: 'Home', icon: 'home' },
-  { name: 'income', label: '+Renda', icon: 'income' },
+  { name: 'income', label: 'Renda', icon: 'income' },
   { name: 'user', label: 'Perfil', icon: 'user' },
-  { name: 'settings', label: 'Settings', icon: 'settings' },
+  { name: 'settings', label: 'Configurações', icon: 'settings' },
   { name: 'info', label: 'Info', icon: 'info' },
 ]
 

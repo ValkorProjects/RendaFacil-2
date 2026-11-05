@@ -438,17 +438,6 @@ async function signOut() {
           </dl>
         </section>
 
-        <button
-          type="button"
-          class="secondary-button password-trigger"
-          aria-haspopup="dialog"
-          aria-controls="password-dialog"
-          :disabled="busy"
-          @click="openPasswordDialog"
-        >
-          Trocar senha
-        </button>
-
         <dialog
           id="password-dialog"
           ref="passwordDialog"
@@ -764,6 +753,16 @@ async function signOut() {
           </div>
         </div>
         <div class="form-actions">
+          <button
+            type="button"
+            class="secondary-button password-trigger"
+            aria-haspopup="dialog"
+            aria-controls="password-dialog"
+            :disabled="busy"
+            @click="openPasswordDialog"
+          >
+            Trocar senha
+          </button>
           <button type="button" class="secondary-button" :disabled="busy" @click="signOut">
             Sair da conta
           </button>
@@ -1010,17 +1009,14 @@ async function signOut() {
 }
 
 .secondary-button {
+  border: 1px solid var(--glass-border);
   background: var(--glass-bg-raised);
   color: var(--color-text);
 }
 
 .text-button {
   padding-inline: 0.25rem;
-  text-underline-offset: 0.25rem;
-}
-
-.text-button:hover {
-  text-decoration: underline;
+  text-decoration: none;
 }
 
 .dependent-list {
@@ -1070,7 +1066,7 @@ async function signOut() {
   border: 1px solid currentColor;
   border-radius: 999px;
   background: transparent;
-  color: #b42332;
+  color: var(--color-danger);
   font: inherit;
   font-size: 0.875rem;
   font-weight: 600;
@@ -1089,17 +1085,13 @@ async function signOut() {
   border-radius: 1.5rem;
   background: var(--color-bg);
   color: var(--color-text);
-  box-shadow: 0 1.5rem 5rem #0004;
+  box-shadow: 0 1.5rem 5rem var(--color-shadow);
   text-align: left;
 }
 
 .account-dialog::backdrop {
-  background: #10182899;
+  background: var(--color-overlay);
   backdrop-filter: blur(4px);
-}
-
-.password-trigger {
-  width: 100%;
 }
 
 .delete-dialog h2 {
@@ -1112,9 +1104,9 @@ async function signOut() {
 }
 
 .danger-confirm {
-  background: #b42332;
-  border-color: #b42332;
-  color: white;
+  background: var(--color-danger);
+  border-color: var(--color-danger);
+  color: var(--color-on-danger);
 }
 
 .access-switch {
@@ -1148,12 +1140,12 @@ async function signOut() {
 }
 
 .notice-error {
-  color: #b42332;
+  color: var(--color-danger);
   border-color: currentColor;
 }
 
 .notice-success {
-  color: #14653d;
+  color: var(--color-success);
   border-color: currentColor;
 }
 
@@ -1174,14 +1166,7 @@ button:disabled {
 
 @media (prefers-color-scheme: dark) {
   .danger-button:not(.danger-confirm) {
-    color: #ffb4bc;
-  }
-  .notice-error {
-    color: #ffb4bc;
-  }
-
-  .notice-success {
-    color: #8ae0b0;
+    color: var(--color-danger);
   }
 }
 
