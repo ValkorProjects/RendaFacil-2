@@ -11,7 +11,8 @@ export default defineConfig({
     },
   },
   test: {
-    include: ['src/**/__tests__/*.spec.ts'],
+    // The engine suite lives in `__tests__/*.spec.ts`; `*.test.ts` files sit next to the code.
+    include: ['src/**/__tests__/*.spec.ts', 'src/**/*.test.ts'],
     environment: 'node',
   },
 })

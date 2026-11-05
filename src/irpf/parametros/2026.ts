@@ -14,7 +14,7 @@ export const PARAMETROS_2026 = {
   ],
   // redução anual: Lei 15.270/2025, que incluiu o art. 11-A na Lei 9.250/1995
   reducaoAnual: {
-    zeraAte: 6_000_000, // rendimentos tributáveis até 60.000,00
+    zeroAte: 6_000_000, // rendimentos tributáveis até 60.000,00
     maxima: 269_415, // até 2.694,15
     parcialAte: 8_820_000, // até 88.200,00
     constante: 842_973, // 8.429,73
@@ -44,7 +44,7 @@ export const PARAMETROS_2026 = {
     descontoSimplificado: 60_720, // 607,20
     // redução mensal: art. 3º-A da Lei 9.250/1995, também incluído pela Lei 15.270/2025
     reducao: {
-      zeraAte: 500_000, // salário bruto até 5.000,00
+      zeroAte: 500_000, // salário bruto até 5.000,00
       maxima: 31_289, // até 312,89
       parcialAte: 735_000, // até 7.350,00
       constante: 97_862, // 978,62

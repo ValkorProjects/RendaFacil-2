@@ -15,10 +15,10 @@ export interface FaixaInss {
 }
 
 // Redução da Lei 15.270/2025. O ajuste anual e a folha mensal usam a mesma forma, com valores
-// diferentes: até `zeraAte` a redução vale até `maxima`; até `parcialAte` vale
+// diferentes: até `zeroAte` a redução vale até `maxima`; até `parcialAte` vale
 // `constante − fator × rendimento`; acima disso, zero.
 export interface RegraReducao {
-  readonly zeraAte: number
+  readonly zeroAte: number
   readonly maxima: number
   readonly parcialAte: number
   readonly constante: number

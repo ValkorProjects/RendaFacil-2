@@ -53,7 +53,7 @@ Todos os valores ficam em [`src/irpf/parametros/2026.ts`](../src/irpf/parametros
 
 | Parâmetro                                            | Valor                                          | No código                        | Fonte                                                            |
 | ---------------------------------------------------- | ---------------------------------------------- | -------------------------------- | ---------------------------------------------------------------- |
-| Redução: rendimento até o qual vale a redução máxima | 60.000,00                                      | `reducaoAnual.zeraAte`           | [Lei 15.270/2025][lei-15270] · [Receita][receita-2026]           |
+| Redução: rendimento até o qual vale a redução máxima | 60.000,00                                      | `reducaoAnual.zeroAte`           | [Lei 15.270/2025][lei-15270] · [Receita][receita-2026]           |
 | Redução máxima                                       | 2.694,15                                       | `reducaoAnual.maxima`            | [Lei 15.270/2025][lei-15270] · [Receita][receita-2026]           |
 | Redução: fim da faixa de redução parcial             | 88.200,00                                      | `reducaoAnual.parcialAte`        | [Lei 15.270/2025][lei-15270] · [Receita][receita-2026]           |
 | Redução parcial: constante                           | 8.429,73                                       | `reducaoAnual.constante`         | [Lei 15.270/2025][lei-15270] · [Receita][receita-2026]           |

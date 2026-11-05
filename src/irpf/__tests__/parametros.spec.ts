@@ -2,20 +2,10 @@ import { describe, expect, it } from 'vitest'
 
 import { mulDiv } from '@/irpf/centavos'
 import { impostoPelaTabela, reducaoDaLei } from '@/irpf/imposto'
-import { PARAMETROS_2026, parametros, type FaixaIr } from '@/irpf'
+import { PARAMETROS_2026, type FaixaIr } from '@/irpf'
 
-describe('parametros', () => {
-  it('devolve o arquivo do ano', () => {
-    expect(parametros(2026)).toBe(PARAMETROS_2026)
-  })
-
-  it('lança erro claro para ano sem arquivo', () => {
-    expect(() => parametros(2027)).toThrow(
-      new Error('Parâmetros do ano-calendário 2027 não cadastrados'),
-    )
-  })
-})
-
+// Os valores e o erro de ano sem arquivo estão em src/irpf/parametros/parametros.test.ts.
+// Aqui ficam as conferências de consistência entre as tabelas.
 describe('PARAMETROS_2026', () => {
   // Com a parcela certa, as duas faixas vizinhas dão o mesmo imposto no limite entre elas
   // (até 1 centavo, porque a parcela oficial é arredondada).
@@ -44,8 +34,8 @@ describe('PARAMETROS_2026', () => {
   it('a redução máxima zera o imposto do simplificado em 60.000 por ano e 5.000 por mês', () => {
     const { tabelaAnual, reducaoAnual, simplificado, mensal } = PARAMETROS_2026
     const baseAnual =
-      reducaoAnual.zeraAte - mulDiv(reducaoAnual.zeraAte, simplificado.percentual, 100)
-    const baseMensal = mensal.reducao.zeraAte - mensal.descontoSimplificado
+      reducaoAnual.zeroAte - mulDiv(reducaoAnual.zeroAte, simplificado.percentual, 100)
+    const baseMensal = mensal.reducao.zeroAte - mensal.descontoSimplificado
 
     expect(impostoPelaTabela(baseAnual, tabelaAnual).imposto).toBe(reducaoAnual.maxima)
     expect(impostoPelaTabela(baseMensal, mensal.tabela).imposto).toBe(mensal.reducao.maxima)

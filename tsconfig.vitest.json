@@ -1,7 +1,8 @@
-// TSConfig for the unit tests in `src/**/__tests__/`, which tsconfig.app.json leaves out.
+// TSConfig for the unit tests (`src/**/__tests__/*` and `src/**/*.test.ts`), which tsconfig.app.json
+// leaves out.
 {
   "extends": "./tsconfig.app.json",
-  "include": ["env.d.ts", "src/**/__tests__/*"],
+  "include": ["env.d.ts", "src/**/__tests__/*", "src/**/*.test.ts"],
   "exclude": [],
   "compilerOptions": {
     // `vue-tsc --build` produces a .tsbuildinfo file for incremental type-checking.

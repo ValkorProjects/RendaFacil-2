@@ -189,7 +189,7 @@ iOS has no install prompt, so the in-app button never appears there — the Shar
 
 ### Testing the PWA locally
 
-`npm run dev` already serves the manifest and a service worker, so the install option shows up on `localhost` during development. An app installed that way points at the dev server and only works while it is running.
+`npm run dev` does not register a service worker. This keeps the development module graph current and avoids stale assets making buttons temporarily unresponsive. The install option is available when serving the production build with `npm run preview`.
 
 To test the real thing — the production service worker with full offline caching — build and preview instead:
 

@@ -16,7 +16,7 @@ export const impostoPelaTabela = (base: number, tabela: readonly FaixaIr[]) => {
 // Teto da redução da Lei 15.270/2025. Depende só do rendimento bruto (do ano ou do mês), nunca da
 // base: deduções não mudam a redução. Quem aplica deve limitá-la ao imposto pela tabela.
 export const reducaoDaLei = (rendimento: number, regra: RegraReducao): number => {
-  if (rendimento <= regra.zeraAte) return regra.maxima
+  if (rendimento <= regra.zeroAte) return regra.maxima
   if (rendimento > regra.parcialAte) return 0
   return Math.max(0, regra.constante - mulDiv(rendimento, regra.fatorMilionesimos, 1_000_000))
 }

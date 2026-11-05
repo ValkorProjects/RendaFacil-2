@@ -1,12 +1,11 @@
 import { PARAMETROS_2026 } from './2026'
 import type { ParametrosIrpf } from './tipos'
 
-const PARAMETROS_POR_ANO = new Map<number, ParametrosIrpf>([[2026, PARAMETROS_2026]])
-
-export const parametros = (ano: number): ParametrosIrpf => {
-  const encontrados = PARAMETROS_POR_ANO.get(ano)
-  if (!encontrados) throw new Error(`Parâmetros do ano-calendário ${ano} não cadastrados`)
-  return encontrados
+export function parametros(ano: number): ParametrosIrpf {
+  if (ano === 2026) {
+    return PARAMETROS_2026
+  }
+  throw new Error(`Parâmetros do ano-calendário ${ano} não cadastrados.`)
 }
 
 export { PARAMETROS_2026 }
