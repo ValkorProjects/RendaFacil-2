@@ -21,6 +21,7 @@
     "vue-router": "^5.4.0"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "0.5.15",
     "@tsconfig/node20": "^20.1.10",
     "@types/node": "^20.19.0",
     "@vite-pwa/assets-generator": "^2.0.0",

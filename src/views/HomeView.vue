@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import AppIcon from '@/components/AppIcon.vue'
 import PageCard from '@/components/PageCard.vue'
+import EstimateDisclaimer from '@/components/EstimateDisclaimer.vue'
 import { usePwaInstall } from '@/composables/usePwaInstall'
 import { useIncomeStore } from '@/stores/income'
 import { cents, formatCurrency } from '@/utils/currency'
@@ -112,6 +113,7 @@ const features = [
           <span>Dependentes</span>
           <strong>{{ incomeStore.dependentCount }}</strong>
         </div>
+        <EstimateDisclaimer />
         <button class="summary-add-button" type="button" @click="openIncomeRegistration">
           + Adicionar rendimento
         </button>

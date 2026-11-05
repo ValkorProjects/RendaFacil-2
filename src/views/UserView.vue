@@ -8,6 +8,7 @@ import { isSupabaseConfigured } from '@/lib/supabase'
 import { useAuthStore } from '@/stores/auth'
 import { dependentIncomeLabels, useIncomeStore } from '@/stores/income'
 import { cents, formatCurrency } from '@/utils/currency'
+import { PRIVACY_CONSENT_REQUIRED, PRIVACY_CONSENT_TEXT } from '@/utils/privacy'
 import {
   authErrorMessage,
   formatPhone,
@@ -45,6 +46,7 @@ const pendingEmail = computed(() =>
 const draft = reactive({ name: '', email: '', phone: '' })
 const access = reactive({ name: '', email: '', phone: '', password: '', confirmation: '' })
 const accessMode = ref<'signin' | 'signup' | 'forgot'>('signin')
+const privacyAccepted = ref(false)
 const editing = ref(false)
 const busy = ref(false)
 const errorMessage = ref('')
@@ -195,11 +197,13 @@ watch(
     editing.value = false
     Object.assign(draft, { name: '', email: '', phone: '' })
     Object.assign(access, { name: '', email: '', phone: '', password: '' })
+    privacyAccepted.value = false
     clearMessages()
   },
 )
 
 function changeAccessMode(mode: 'signin' | 'signup') {
+  privacyAccepted.value = false
   accessMode.value = mode
   access.password = ''
   access.confirmation = ''
@@ -277,10 +281,15 @@ async function submitAccess() {
     errorMessage.value = 'A confirmação da senha não corresponde.'
     return
   }
+  if (signingUp && !privacyAccepted.value) {
+    errorMessage.value = PRIVACY_CONSENT_REQUIRED
+    return
+  }
   busy.value = true
   try {
     if (signingUp) {
-      const result = await auth.signUp(access, access.password)
+      const result = await auth.signUp(access, access.password, privacyAccepted.value)
+      privacyAccepted.value = false
       if (result.needsConfirmation) {
         successMessage.value =
           'Confira seu e-mail para confirmar o cadastro. Se você já tem uma conta, use a opção Entrar.'
@@ -675,6 +684,21 @@ async function signOut() {
                 <p v-if="accessMode === 'signup'" id="password-help" class="field-help">
                   Use pelo menos 8 caracteres.
                 </p>
+                <div v-if="accessMode === 'signup'" class="privacy-consent">
+                  <label for="privacy-consent" class="privacy-consent-label">
+                    <input
+                      id="privacy-consent"
+                      v-model="privacyAccepted"
+                      name="privacy-consent"
+                      type="checkbox"
+                      required
+                    />
+                    <span>{{ PRIVACY_CONSENT_TEXT }}</span>
+                  </label>
+                  <RouterLink to="/privacidade" target="_blank" rel="noopener">
+                    Ler política de privacidade (abre em nova aba)
+                  </RouterLink>
+                </div>
                 <button type="submit" class="button access-submit">
                   {{
                     busy
@@ -816,6 +840,29 @@ async function signOut() {
 </template>
 
 <style scoped>
+.privacy-consent {
+  display: grid;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  text-align: left;
+}
+
+.privacy-consent-label {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.625rem;
+  cursor: pointer;
+}
+
+.privacy-consent-label input {
+  flex: 0 0 auto;
+  width: 1.125rem;
+  height: 1.125rem;
+  margin-top: 0.2rem;
+  accent-color: var(--color-accent);
+}
+
 .intro {
   font-size: 1rem;
 }

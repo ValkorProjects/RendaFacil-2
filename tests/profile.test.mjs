@@ -16,6 +16,7 @@ const server = await createServer({
 })
 const { readProfile, normalizeProfile, validateProfile, formatPhone, validatePasswordChange } =
   await server.ssrLoadModule('/src/utils/profile.ts')
+const { PRIVACY_POLICY_VERSION } = await server.ssrLoadModule('/src/utils/privacy.ts')
 const originalFetch = globalThis.fetch
 const originalWindow = globalThis.window
 const requests = []
@@ -131,6 +132,17 @@ test('validates names, emails and optional domestic or international phones', ()
   assert.equal(formatPhone('+551133334444'), '+55 (11) 3333-4444')
 })
 
+test('signup rejects missing consent before making any HTTP request', async () => {
+  const start = requests.length
+  for (const accepted of [false, undefined, null, 'true']) {
+    await assert.rejects(
+      auth.signUp({ name: 'Ana', email: 'ana@example.com', phone: '' }, 'test-password', accepted),
+      /política de privacidade/,
+    )
+  }
+  assert.equal(requests.length, start)
+})
+
 test('account lifecycle persists edits, handles pending email and preserves data after a failed save', async () => {
   await getSupabase().auth.getSession()
   assert.equal(auth.ready, true)
@@ -140,9 +152,14 @@ test('account lifecycle persists edits, handles pending email and preserves data
   const signup = await auth.signUp(
     { name: 'Ana', email: 'ana@example.com', phone: '' },
     'test-password',
+    true,
   )
   assert.equal(signup.needsConfirmation, true)
   assert.equal(auth.isGuest, true, 'Signup without confirmation must not sign in')
+  const signupData = requests.find((request) => request.path.endsWith('/signup')).body.data
+  assert.equal(signupData.privacy_consent, true)
+  assert.equal(signupData.privacy_policy_version, PRIVACY_POLICY_VERSION)
+  assert.equal(signupData.privacy_accepted_at, undefined, 'The database supplies the timestamp')
   assert.equal(
     requests.find((request) => request.path.endsWith('/signup')).body.data.full_name,
     'Ana',

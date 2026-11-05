@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { onMounted, ref, watch } from 'vue'
 import { defineAsyncComponent } from 'vue'
-import { RouterView } from 'vue-router'
+import { RouterLink, RouterView, useRoute } from 'vue-router'
 import BottomNav from '@/components/BottomNav.vue'
 
 const UserView = defineAsyncComponent(() => import('@/views/UserView.vue'))
 const ready = ref(false)
 const isGuest = ref(true)
+const route = useRoute()
 
 onMounted(async () => {
   const { useAuthStore } = await import('@/stores/auth')
@@ -24,13 +25,17 @@ onMounted(async () => {
 
 <template>
   <main class="app-main">
-    <p v-if="!ready" class="auth-loading" role="status">Verificando sua sessão…</p>
+    <RouterView v-if="route.meta.public" />
+    <p v-else-if="!ready" class="auth-loading" role="status">Verificando sua sessão…</p>
     <UserView v-else-if="isGuest" />
     <RouterView v-else v-slot="{ Component }">
       <Transition name="page" mode="out-in">
         <component :is="Component" />
       </Transition>
     </RouterView>
+    <RouterLink v-if="!route.meta.public" class="privacy-link" to="/privacidade">
+      Política de privacidade
+    </RouterLink>
   </main>
   <BottomNav v-if="ready && !isGuest" />
 </template>
@@ -46,6 +51,12 @@ onMounted(async () => {
 
 .auth-loading {
   color: var(--color-text-muted);
+}
+
+.privacy-link {
+  margin-top: 1rem;
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
 }
 
 .page-enter-active,

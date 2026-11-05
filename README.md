@@ -76,6 +76,7 @@ cp .env.example .env
 | ------------------------------- | -------- | ---------------------------------- |
 | `VITE_SUPABASE_URL`             | Yes      | Supabase project URL               |
 | `VITE_SUPABASE_PUBLISHABLE_KEY` | Yes      | Supabase publishable (or anon) key |
+| `VITE_PRIVACY_CONTACT_EMAIL` | Before publishing | Real contact address for privacy requests |
 
 The app requires both variables to verify the user's session before allowing access. See [Supabase](#supabase).
 
@@ -236,7 +237,35 @@ const { data, error } = await getSupabase().from('your_table').select()
 
 [The auth store](src/stores/auth.ts) listens for auth changes and exposes `session`, `user`, `ready`, `initializationError` and `isGuest`, plus actions for sign-in, registration, profile updates and sign-out. Signed-out and anonymous Supabase users remain on the profile page until they authenticate.
 
-[The profile page](src/views/UserView.vue) displays and edits name, email and optional contact phone. Names and phones are saved in Supabase Auth user metadata (`full_name`, `phone`) and mirrored to `public.profiles` by the migration trigger. These are profile details, never authorization claims. Contact phone edits do not change the phone identity used for SMS authentication.
+[The profile page](src/views/UserView.vue) displays and edits name, email and optional contact phone. Names and phones are saved in Supabase Auth user metadata (`full_name`, `phone`); the signup trigger creates the corresponding row in `public.perfis`. These are profile details, never authorization claims. Contact phone edits do not change the phone identity used for SMS authentication.
+
+### Privacy and signup consent
+
+The public [privacy page](src/views/PrivacyView.vue) is available at `/privacidade`, even without
+a session or Supabase configuration. Set `VITE_PRIVACY_CONTACT_EMAIL` to the real support address
+before publishing; no address is invented when it is missing. Confirm the policy's retention
+terms against the actual infrastructure configuration before publication.
+
+Apply [the consent migration](supabase/migrations/20261105033409_add_privacy_consent.sql) to the
+frontend's Supabase project as part of the release. It renames `profiles` to `perfis` while preserving
+existing records, RLS and cascade deletion. Signup requires explicit consent to policy version
+`2026-11-05`; the Auth trigger records `consentimento_versao` and server-generated `consentimento_em`
+atomically, even when email confirmation is required. Existing accounts retain NULL consent
+fields and are not treated as having accepted. Direct client writes to consent fields are denied;
+subsequent Auth metadata edits do not rewrite the evidence. This is signup-only consent collection;
+any future collection from legacy users requires a separate explicit acceptance flow.
+
+Deploy the migration and frontend together: an old frontend will no longer be able to register
+users once the database requires consent. Update both the policy version constant and database
+validation when publishing a new policy. The local migration is not automatically applied to a
+hosted Supabase project by the frontend build.
+
+[EstimateDisclaimer](src/components/EstimateDisclaimer.vue) is shared by the income summary and
+home summary. Include it beside any future tax result. [Vercel rewrites](vercel.json) allow direct
+navigation and refresh on `/privacidade` and the other SPA routes.
+
+`npm test` also runs the actual SQL migrations in an isolated PGlite PostgreSQL instance, checking
+consent validation, server timestamps, legacy accounts, RLS, immutable evidence and cascade deletion.
 
 Email changes use `auth.updateUser` and keep showing the current email until Supabase confirms the new address. With Secure Email Change enabled, follow the confirmation messages sent to both addresses. Registration also handles projects that require email confirmation before a session is created. The access form validates password confirmation, can resend a signup confirmation message, and provides a password recovery flow.
 
@@ -286,7 +315,7 @@ Run `npm test` for profile validation and the account lifecycle tests. They exer
 
 ### Typed queries
 
-`src/types/database.types.ts` is an empty placeholder, so TypeScript will reject table names until you generate the real types from your schema:
+[The schema types](src/types/database.types.ts) include `perfis`. Regenerate them after applying future schema changes:
 
 ```bash
 npx supabase login

@@ -10,6 +10,7 @@ import {
   type ProfileFields,
 } from '@/utils/profile'
 import { useIncomeStore } from '@/stores/income'
+import { PRIVACY_POLICY_VERSION, requirePrivacyConsent } from '@/utils/privacy'
 
 export const useAuthStore = defineStore('auth', () => {
   const income = useIncomeStore()
@@ -59,7 +60,8 @@ export const useAuthStore = defineStore('auth', () => {
     if (error) throw error
   }
 
-  async function signUp(fields: ProfileFields, password: string) {
+  async function signUp(fields: ProfileFields, password: string, privacyAccepted: boolean) {
+    requirePrivacyConsent(privacyAccepted)
     const validationError = validateProfile(fields)
     if (validationError) throw new Error(validationError)
     const profile = normalizeProfile(fields)
@@ -68,7 +70,12 @@ export const useAuthStore = defineStore('auth', () => {
       password,
       options: {
         emailRedirectTo: profileRedirectUrl(),
-        data: { full_name: profile.name, phone: profile.phone },
+        data: {
+          full_name: profile.name,
+          phone: profile.phone,
+          privacy_consent: true,
+          privacy_policy_version: PRIVACY_POLICY_VERSION,
+        },
       },
     })
     if (error) throw error

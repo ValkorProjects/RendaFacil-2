@@ -5,6 +5,12 @@ const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
     {
+      path: '/privacidade',
+      name: 'privacy',
+      component: () => import('@/views/PrivacyView.vue'),
+      meta: { public: true },
+    },
+    {
       path: '/',
       name: 'home',
       component: HomeView,

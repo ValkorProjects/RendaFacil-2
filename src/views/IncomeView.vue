@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { Money3Component } from 'v-money3'
 import PageCard from '@/components/PageCard.vue'
+import EstimateDisclaimer from '@/components/EstimateDisclaimer.vue'
 import { cents, formatCurrency, moneyConfig } from '@/utils/currency'
 import {
   dependentIncomeLabels,
@@ -366,6 +367,7 @@ const saveIncomeAndReturn = () => {
             <small>Quantidade informada</small>
           </div>
         </dl>
+        <EstimateDisclaimer />
       </footer>
       <button
         class="button add-registration-button"
