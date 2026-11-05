@@ -723,7 +723,10 @@ async function signOut() {
         </section>
       </template>
 
-      <section class="details-panel" aria-labelledby="profile-dependents-title">
+      <section
+        class="details-panel dependent-panel"
+        aria-labelledby="profile-dependents-title"
+      >
         <div class="section-heading">
           <div>
             <h2 id="profile-dependents-title">
@@ -1016,12 +1019,16 @@ async function signOut() {
   margin: 0;
 }
 
+.dependent-panel .section-heading {
+  margin-bottom: 0.75rem;
+}
+
 .dependent-item {
   display: flex;
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 0.75rem;
-  padding-block: 1rem;
+  padding-block: 0.65rem;
   overflow-wrap: anywhere;
 }
 
@@ -1030,6 +1037,7 @@ async function signOut() {
 }
 
 .dependent-item h3 {
+  margin: 0;
   color: var(--color-text);
   font-size: 0.95rem;
 }
