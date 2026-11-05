@@ -112,9 +112,12 @@ Then open the "Network" URL that Vite prints. Note that installing the PWA does 
 | `npm run format`              | Format `src/` with Prettier                                     |
 | `npm run generate-pwa-assets` | Regenerate the app icons in `public/` from `public/favicon.svg` |
 
+Every pull request into `dev` or `main` runs ESLint, the Prettier check, the unit tests, the type-check and the production build in GitHub Actions ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)). Run the same checks locally before pushing.
+
 ## Project structure
 
 ```text
+├── .github/workflows/ci.yml Checks run on every pull request
 ├── docs/
 │   └── calculo-irpf-2026.md How the income tax engine calculates (formulas and sources)
 ├── public/                  Static files copied as-is (favicon and PWA icons)
@@ -123,13 +126,15 @@ Then open the "Network" URL that Vite prints. Note that installing the PWA does 
 │   ├── components/
 │   │   ├── AppIcon.vue      Inline SVG icons
 │   │   ├── BottomNav.vue    Glass navigation island
-│   │   └── PageCard.vue     Glass card used by every sample page
+│   │   ├── PageCard.vue     Glass card used by every sample page
+│   │   └── TaxEstimateCard.vue  Tax estimate and "Ver o cálculo" on the income page
 │   ├── composables/
 │   │   └── usePwaInstall.ts In-app "Install app" button logic
-│   ├── irpf/                Income tax engine: pure functions, money in cents, tests in __tests__/
+│   ├── irpf/                Income tax engine: pure functions, money in cents (tests in __tests__/ and *.test.ts)
 │   ├── lib/supabase.ts      Supabase client
 │   ├── router/index.ts      Route definitions
 │   ├── stores/auth.ts       Pinia store tracking the Supabase session
+│   ├── stores/income.ts     Income entered on the income page and its tax estimate (in memory)
 │   ├── types/
 │   │   └── database.types.ts  Supabase schema types (placeholder until generated)
 │   ├── views/               One component per page

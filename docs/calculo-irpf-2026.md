@@ -278,7 +278,24 @@ const resultado = calcularAjusteAnual({
 
 - **Efeito de uma despesa (RF-07):** calcule o imposto devido com e sem a despesa. Cada cálculo escolhe o melhor modelo de novo.
 - **Texto "não deduz" (RF-13):** use `avaliarDespesa(despesa, dependentes)` e `TIPOS_DESPESA[tipo].rotulo`.
-- **Testes:** `npm test` roda os casos de referência do RF-08 e os da folha mensal. Todo bug de cálculo encontrado vira um caso novo.
+- **Testes:** `npm test` roda os casos de referência do RF-08 (`src/irpf/__tests__/`), os da folha mensal e os testes ao lado do código (`*.test.ts`). O CI ([`.github/workflows/ci.yml`](../.github/workflows/ci.yml)) roda os testes, o lint, a formatação, o type-check e o build em todo PR para `dev` e `main`. Todo bug de cálculo encontrado vira um caso novo.
+
+### 8.1 Estimativa parcial na tela de Rendas
+
+Enquanto as telas de Rendas (RF-12), Dedutíveis (RF-13) e a Home (RF-14) não existem na forma final, a tela de cadastro de rendimentos já usa o motor, com os dados guardados só em memória:
+
+| Na tela (por mês)                                    | No motor (por ano, × 12)                     |
+| ---------------------------------------------------- | -------------------------------------------- |
+| Valor mensal de cada rendimento                      | `fontes[].rendimentos`                       |
+| INSS descontado no mês                               | `fontes[].previdencia`                       |
+| IR retido na fonte no mês                            | `fontes[].irrf`                              |
+| Renda tributável de dependente (estágio, outros)     | uma fonte a mais, sem INSS nem IRRF          |
+| Pensão recebida por dependente                       | fica fora (isenta)                           |
+| Cada dependente, com ou sem renda                    | `dependentes`                                |
+| Pensão alimentícia paga                              | `pensoes`                                    |
+| —                                                    | `saude` e `educacao` vazios (sem tela ainda) |
+
+A conversão fica em `buildTaxInput`, em [`src/stores/income.ts`](../src/stores/income.ts). O botão "Calcular INSS e IR pelo salário" usa `calcularFolhaMensal` com os dependentes e a pensão do formulário. Todas as categorias de renda são tratadas como rendimento tributável; aluguéis, trabalho autônomo e aposentadoria têm regras próprias que ficam fora do MVP (seção 9), e o cartão da estimativa avisa isso.
 
 ## 9. Fora do escopo do MVP
 
