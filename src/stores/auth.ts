@@ -11,6 +11,8 @@ import {
 } from '@/utils/profile'
 import { useIncomeStore } from '@/stores/income'
 
+export const CONSENT_VERSION = '2026-11-06'
+
 export const useAuthStore = defineStore('auth', () => {
   const income = useIncomeStore()
   const session = shallowRef<Session | null>(null)
@@ -59,7 +61,8 @@ export const useAuthStore = defineStore('auth', () => {
     if (error) throw error
   }
 
-  async function signUp(fields: ProfileFields, password: string) {
+  async function signUp(fields: ProfileFields, password: string, consentAccepted: boolean) {
+    if (!consentAccepted) throw new Error('Aceite a política de privacidade para criar sua conta.')
     const validationError = validateProfile(fields)
     if (validationError) throw new Error(validationError)
     const profile = normalizeProfile(fields)
@@ -68,7 +71,11 @@ export const useAuthStore = defineStore('auth', () => {
       password,
       options: {
         emailRedirectTo: profileRedirectUrl(),
-        data: { full_name: profile.name, phone: profile.phone },
+        data: {
+          full_name: profile.name,
+          consentimento_versao: CONSENT_VERSION,
+          consentimento_em: new Date().toISOString(),
+        },
       },
     })
     if (error) throw error
@@ -106,7 +113,7 @@ export const useAuthStore = defineStore('auth', () => {
       profile.email !== user.value?.new_email
     const { data, error } = await getSupabase().auth.updateUser(
       {
-        data: { full_name: profile.name, phone: profile.phone },
+        data: { full_name: profile.name },
         ...(emailChanged ? { email: profile.email } : {}),
       },
       { emailRedirectTo: profileRedirectUrl() },

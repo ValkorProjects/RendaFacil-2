@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { RouterLink } from 'vue-router'
 import AppIcon from '@/components/AppIcon.vue'
@@ -10,7 +10,6 @@ import { dependentIncomeLabels, useIncomeStore } from '@/stores/income'
 import { cents, formatCurrency } from '@/utils/currency'
 import {
   authErrorMessage,
-  formatPhone,
   readProfile,
   validateProfile,
   validatePasswordChange,
@@ -44,6 +43,7 @@ const pendingEmail = computed(() =>
 )
 const draft = reactive({ name: '', email: '', phone: '' })
 const access = reactive({ name: '', email: '', phone: '', password: '', confirmation: '' })
+const consentAccepted = ref(false)
 const accessMode = ref<'signin' | 'signup' | 'forgot'>('signin')
 const editing = ref(false)
 const busy = ref(false)
@@ -73,7 +73,9 @@ function clearResetPassword() {
 function openResetPasswordDialog() {
   clearMessages()
   clearResetPassword()
-  resetPasswordDialog.value?.showModal()
+  if (resetPasswordDialog.value && !resetPasswordDialog.value.open) {
+    resetPasswordDialog.value.showModal()
+  }
 }
 
 async function submitResetPassword() {
@@ -190,13 +192,24 @@ watch(
   () => {
     clearPassword()
     passwordDialog.value?.close()
+    resetPasswordDialog.value?.close()
     deleteDialog.value?.close()
     deleteError.value = ''
     editing.value = false
     Object.assign(draft, { name: '', email: '', phone: '' })
-    Object.assign(access, { name: '', email: '', phone: '', password: '' })
+    Object.assign(access, { name: '', email: '', phone: '', password: '', confirmation: '' })
+    consentAccepted.value = false
     clearMessages()
   },
+)
+
+watch(
+  recoveryPending,
+  (pending) => {
+    if (pending) void nextTick(openResetPasswordDialog)
+    else resetPasswordDialog.value?.close()
+  },
+  { immediate: true },
 )
 
 function changeAccessMode(mode: 'signin' | 'signup') {
@@ -254,6 +267,10 @@ async function submitAccess() {
     errorMessage.value = validationError
     return
   }
+  if (signingUp && !consentAccepted.value) {
+    errorMessage.value = 'Aceite a política de privacidade para criar sua conta.'
+    return
+  }
   if (requestingReset) {
     busy.value = true
     try {
@@ -280,7 +297,7 @@ async function submitAccess() {
   busy.value = true
   try {
     if (signingUp) {
-      const result = await auth.signUp(access, access.password)
+      const result = await auth.signUp(access, access.password, consentAccepted.value)
       if (result.needsConfirmation) {
         successMessage.value =
           'Confira seu e-mail para confirmar o cadastro. Se você já tem uma conta, use a opção Entrar.'
@@ -395,22 +412,6 @@ async function signOut() {
                 Ao alterar seu e-mail, siga as instruções de confirmação enviadas aos endereços
                 envolvidos.
               </p>
-              <label class="field" for="profile-phone">
-                Telefone <span class="optional">(opcional)</span>
-                <input
-                  id="profile-phone"
-                  v-model="draft.phone"
-                  name="tel"
-                  type="tel"
-                  autocomplete="tel"
-                  placeholder="(11) 99999-9999"
-                  maxlength="25"
-                  aria-describedby="phone-help"
-                />
-              </label>
-              <p id="phone-help" class="field-help">
-                Inclua o DDD. Para remover o telefone, deixe o campo vazio.
-              </p>
               <div class="form-actions">
                 <button type="submit" class="button">
                   {{ busy ? 'Salvando…' : 'Salvar alterações' }}
@@ -430,10 +431,6 @@ async function signOut() {
             <div>
               <dt>E-mail</dt>
               <dd>{{ profile.email || 'Não informado' }}</dd>
-            </div>
-            <div>
-              <dt>Telefone</dt>
-              <dd>{{ profile.phone ? formatPhone(profile.phone) : 'Não informado' }}</dd>
             </div>
           </dl>
         </section>
@@ -508,11 +505,12 @@ async function signOut() {
           </form>
         </dialog>
         <dialog
-          v-if="recoveryPending"
           ref="resetPasswordDialog"
-          open
           class="account-dialog password-dialog"
           aria-labelledby="reset-title"
+          :aria-busy="resettingPassword"
+          @cancel="resettingPassword && $event.preventDefault()"
+          @keydown.esc.prevent="!resettingPassword && resetPasswordDialog?.close()"
         >
           <h2 id="reset-title">Defina uma nova senha</h2>
           <p>Escolha uma senha nova para voltar a acessar sua conta.</p>
@@ -562,7 +560,7 @@ async function signOut() {
                       : 'Recupere sua senha'
                 }}
               </h2>
-              <p>Entre ou cadastre-se para salvar e editar seus dados pessoais.</p>
+              <p>Entre ou cadastre-se para acessar seus dados pessoais e dependentes.</p>
             </div>
           </div>
 
@@ -621,18 +619,6 @@ async function signOut() {
                     required
                   />
                 </label>
-                <label v-if="accessMode === 'signup'" class="field" for="access-phone">
-                  Telefone <span class="optional">(opcional)</span>
-                  <input
-                    id="access-phone"
-                    v-model="access.phone"
-                    name="tel"
-                    type="tel"
-                    autocomplete="tel"
-                    placeholder="(11) 99999-9999"
-                    maxlength="25"
-                  />
-                </label>
                 <label v-if="accessMode !== 'forgot'" class="field" for="access-password">
                   Senha
                   <input
@@ -664,6 +650,17 @@ async function signOut() {
                 <p v-if="accessMode === 'signup'" id="password-help" class="field-help">
                   Use pelo menos 8 caracteres.
                 </p>
+                <label v-if="accessMode === 'signup'" class="consent-field">
+                  <input v-model="consentAccepted" type="checkbox" required />
+                  <span>
+                    Li a
+                    <RouterLink :to="{ name: 'privacy' }" target="_blank">
+                      política de privacidade
+                    </RouterLink>
+                    e autorizo o uso dos meus dados para calcular minha estimativa de Imposto de
+                    Renda.
+                  </span>
+                </label>
                 <button type="submit" class="button access-submit">
                   {{
                     busy
@@ -713,6 +710,7 @@ async function signOut() {
       </template>
 
       <section
+        v-if="!isGuest"
         class="details-panel dependent-panel"
         aria-labelledby="profile-dependents-title"
       >
@@ -790,6 +788,10 @@ async function signOut() {
       </p>
       <p v-if="deleteError" class="notice notice-error" role="alert">{{ deleteError }}</p>
       <p v-if="deleting" role="status">Excluindo sua conta…</p>
+      <label class="field delete-confirmation" for="delete-confirmation">
+        Digite <strong>EXCLUIR</strong> para confirmar
+        <input id="delete-confirmation" v-model="deleteConfirmation" autocomplete="off" />
+      </label>
       <div class="form-actions">
         <button
           type="button"
@@ -800,10 +802,6 @@ async function signOut() {
         >
           Cancelar
         </button>
-        <label class="field delete-confirmation" for="delete-confirmation">
-          Digite <strong>EXCLUIR</strong> para confirmar
-          <input id="delete-confirmation" v-model="deleteConfirmation" autocomplete="off" />
-        </label>
         <button
           type="button"
           class="danger-button danger-confirm"

@@ -63,8 +63,17 @@ export function authErrorMessage(error: unknown): string {
     return typeof value === 'string' ? value.trim().toLowerCase() : ''
   }
 
+  const name = getText('name')
   const codes = [getText('code'), getText('error_code')]
   const message = [getText('message'), getText('error_description')].join(' ')
+
+  if (
+    name === 'typeerror' ||
+    name === 'authretryablefetcherror' ||
+    message.includes('failed to fetch')
+  ) {
+    return 'Não foi possível conectar ao serviço. Verifique sua conexão e tente novamente.'
+  }
 
   if (
     codes.includes('over_email_send_rate_limit') ||
@@ -115,7 +124,7 @@ export function authErrorMessage(error: unknown): string {
     return 'Escolha uma senha mais forte, com letras, números e símbolos.'
   }
 
-  return 'Não foi possível concluir a solicitação. Verifique sua conexão e tente novamente.'
+  return 'Não foi possível concluir a solicitação. Tente novamente mais tarde.'
 }
 
 

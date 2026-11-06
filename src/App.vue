@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { onMounted, ref, watch } from 'vue'
 import { defineAsyncComponent } from 'vue'
-import { RouterView } from 'vue-router'
+import { RouterView, useRoute } from 'vue-router'
 import BottomNav from '@/components/BottomNav.vue'
 
 const UserView = defineAsyncComponent(() => import('@/views/UserView.vue'))
 const ready = ref(false)
 const isGuest = ref(true)
+const route = useRoute()
 
 onMounted(() => {
   const init = () => {
@@ -30,7 +31,7 @@ onMounted(() => {
 <template>
   <main class="app-main">
     <p v-if="!ready" class="auth-loading" role="status">Verificando sua sessão…</p>
-    <UserView v-else-if="isGuest" />
+    <UserView v-else-if="isGuest && !route.meta.public" />
     <RouterView v-else v-slot="{ Component }">
       <Transition name="page" mode="out-in">
         <component :is="Component" />

@@ -14,8 +14,14 @@ const server = await createServer({
     'import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY': JSON.stringify('test-publishable-key'),
   },
 })
-const { readProfile, normalizeProfile, validateProfile, formatPhone, validatePasswordChange } =
-  await server.ssrLoadModule('/src/utils/profile.ts')
+const {
+  readProfile,
+  normalizeProfile,
+  validateProfile,
+  formatPhone,
+  validatePasswordChange,
+  authErrorMessage,
+} = await server.ssrLoadModule('/src/utils/profile.ts')
 const originalFetch = globalThis.fetch
 const originalWindow = globalThis.window
 const requests = []
@@ -116,6 +122,17 @@ test('validates names, emails and optional domestic or international phones', ()
     email: 'ana@example.com',
     phone: '+5511999998888',
   })
+
+  test('distinguishes network errors from service errors', () => {
+    assert.match(
+      authErrorMessage(new TypeError('Failed to fetch')),
+      /conectar ao serviço.*conexão/i,
+    )
+    assert.equal(
+      authErrorMessage({ status: 500, message: 'Edge Function returned a 500' }),
+      'Não foi possível concluir a solicitação. Tente novamente mais tarde.',
+    )
+  })
   for (const invalid of [
     { name: '   ' },
     { email: 'invalid' },
@@ -140,6 +157,7 @@ test('account lifecycle persists edits, handles pending email and preserves data
   const signup = await auth.signUp(
     { name: 'Ana', email: 'ana@example.com', phone: '' },
     'test-password',
+    true,
   )
   assert.equal(signup.needsConfirmation, true)
   assert.equal(auth.isGuest, true, 'Signup without confirmation must not sign in')
@@ -156,7 +174,7 @@ test('account lifecycle persists edits, handles pending email and preserves data
     phone: '(11) 99999-8888',
   })
   assert.equal(auth.user.user_metadata.full_name, 'Ana Souza')
-  assert.equal(auth.user.user_metadata.phone, '11999998888')
+  assert.equal(auth.user.user_metadata.phone, undefined)
   assert.equal(
     requests.at(-1).body.phone,
     undefined,
@@ -176,7 +194,7 @@ test('account lifecycle persists edits, handles pending email and preserves data
   assert.equal(pending.emailConfirmationPending, true)
   assert.equal(auth.user.email, 'ana@example.com', 'Keep the confirmed email until verification')
   assert.equal(auth.user.new_email, 'novo@example.com')
-  assert.equal(auth.user.user_metadata.phone, '', 'A phone can be removed')
+  assert.equal(auth.user.user_metadata.phone, undefined)
 
   await auth.updateProfile({ name: 'Ana Souza', email: 'novo@example.com', phone: '' })
   assert.equal(requests.at(-1).body.email, undefined, 'Do not resend an already pending change')
