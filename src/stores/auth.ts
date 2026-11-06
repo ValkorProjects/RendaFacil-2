@@ -25,14 +25,6 @@ export const useAuthStore = defineStore('auth', () => {
   const profileRedirectUrl = () =>
     new URL(`${import.meta.env.BASE_URL}user`, window.location.origin).href
 
-  const signIn = (email: string, password: string) =>
-    getSupabase().auth.signInWithPassword({ email, password })
-
-  const signUp = (email: string, password: string) =>
-    getSupabase().auth.signUp({ email, password })
-
-  const signOut = () => getSupabase().auth.signOut()
-
   // Fires once with the persisted session, then again on every sign-in/out.
   if (isSupabaseConfigured) {
     try {
