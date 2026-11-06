@@ -10,8 +10,7 @@ export const useAuthStore = defineStore('auth', () => {
   const signIn = (email: string, password: string) =>
     getSupabase().auth.signInWithPassword({ email, password })
 
-  const signUp = (email: string, password: string) =>
-    getSupabase().auth.signUp({ email, password })
+  const signUp = (email: string, password: string) => getSupabase().auth.signUp({ email, password })
 
   const signOut = () => getSupabase().auth.signOut()
 

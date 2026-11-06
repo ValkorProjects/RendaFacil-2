@@ -1,18 +1,25 @@
-import { parametros } from './parametros'
-import type { ParametrosIrpf } from './parametros'
+import { exigirInteiroNaoNegativo, mulDiv, somar } from './centavos'
+import { impostoPelaTabela, reducaoDaLei } from './imposto'
+import { parametros, type FaixaIr, type ParametrosIrpf } from './parametros'
 
+// Todos os valores em centavos.
+
+// Números de um informe de rendimentos: quadro 3, linhas 01, 02 e 05. O 13º e a PLR têm
+// tributação exclusiva e ficam fora.
 export type Fonte = {
   rendimentos: number
   previdencia: number
   irrf: number
 }
 
+// dedutivel = tipo dedutível e beneficiário válido (titular ou dependente)
 export type DespesaSaude = {
   valor: number
   reembolso: number
   dedutivel: boolean
 }
 
+// `pessoa` identifica de quem é a despesa, porque o limite de educação é por pessoa
 export type DespesaEducacao = {
   pessoa: string
   valor: number
@@ -20,11 +27,11 @@ export type DespesaEducacao = {
 }
 
 export type Entrada = {
-  fontes: Fonte[]
-  dependentes: number
-  pensoes: number
-  saude: DespesaSaude[]
-  educacao: DespesaEducacao[]
+  fontes: readonly Fonte[] // do titular e dos dependentes
+  dependentes: number // quantidade válida (RF-11)
+  pensoes: number // soma das pensões válidas (RF-13)
+  saude: readonly DespesaSaude[]
+  educacao: readonly DespesaEducacao[]
 }
 
 export type Modelo = {
@@ -39,115 +46,110 @@ export type Modelo = {
 export type Resultado = {
   rendimentos: number
   irrfRetido: number
+  // deduções do modelo completo, por tipo
+  totalPrevidencia: number
+  deducaoDependentes: number
+  totalPensoes: number
   totalSaude: number
   totalEducacao: number
   completo: Modelo
   simplificado: Modelo
   modelo: 'completo' | 'simplificado'
   impostoDevido: number
-  resultado: number
-  faltaParaCompleto: number
+  resultado: number // > 0 restituição · < 0 imposto a pagar · 0 sem saldo
+  faltaParaCompleto: number // deduções que faltam para o completo valer a pena
 }
 
-const mulDiv = (a: number, b: number, divisor: number) =>
-  Math.floor((a * b + Math.floor(divisor / 2)) / divisor)
-
-const valorNaoNegativo = (valor: number) => Math.max(0, Math.trunc(valor))
-
-const somaFonte = (fontes: Fonte[], campo: keyof Fonte) =>
-  fontes.reduce((total, fonte) => total + valorNaoNegativo(fonte[campo]), 0)
-
-const calcularReducao = (rendimentos: number, P: ParametrosIrpf) => {
-  if (rendimentos <= P.reducaoAnual.zeroAte) return P.reducaoAnual.maxima
-  if (rendimentos > P.reducaoAnual.parcialAte) return 0
-
-  return Math.max(
-    0,
-    P.reducaoAnual.constante -
-      mulDiv(rendimentos, P.reducaoAnual.fatorMilionesimos, 1_000_000),
-  )
+// Valor negativo, fracionário ou NaN para a conta com um RangeError que diz o campo, em vez de
+// virar zero em silêncio: um NaN nas pensões, por exemplo, zeraria o imposto do modelo completo.
+const validarEntrada = (entrada: Entrada) => {
+  entrada.fontes.forEach((fonte, i) => {
+    exigirInteiroNaoNegativo(fonte.rendimentos, `fontes[${i}].rendimentos`)
+    exigirInteiroNaoNegativo(fonte.previdencia, `fontes[${i}].previdencia`)
+    exigirInteiroNaoNegativo(fonte.irrf, `fontes[${i}].irrf`)
+  })
+  exigirInteiroNaoNegativo(entrada.dependentes, 'dependentes')
+  exigirInteiroNaoNegativo(entrada.pensoes, 'pensoes')
+  entrada.saude.forEach((despesa, i) => {
+    exigirInteiroNaoNegativo(despesa.valor, `saude[${i}].valor`)
+    exigirInteiroNaoNegativo(despesa.reembolso, `saude[${i}].reembolso`)
+  })
+  entrada.educacao.forEach((despesa, i) => {
+    exigirInteiroNaoNegativo(despesa.valor, `educacao[${i}].valor`)
+  })
 }
 
-const calcularModelo = (rendimentos: number, deducoes: number, P: ParametrosIrpf): Modelo => {
-  const base = Math.max(0, rendimentos - deducoes)
-  const faixa = P.tabelaAnual.find(({ ate }) => base <= ate)
-
-  if (!faixa) {
-    return {
-      deducoes,
-      base,
-      aliquotaBp: 0,
-      impostoTabela: 0,
-      reducao: 0,
-      impostoDevido: 0,
-    }
+const calcularEducacao = (despesas: readonly DespesaEducacao[], limitePorPessoa: number) => {
+  const valoresPorPessoa = new Map<string, number>()
+  for (const { pessoa, valor, dedutivel } of despesas) {
+    if (dedutivel) valoresPorPessoa.set(pessoa, (valoresPorPessoa.get(pessoa) ?? 0) + valor)
   }
+  return somar([...valoresPorPessoa.values()], (total) => Math.min(limitePorPessoa, total))
+}
 
-  const impostoTabela = Math.max(0, mulDiv(base, faixa.aliquotaBp, 10_000) - faixa.parcela)
-  const reducao = Math.min(calcularReducao(rendimentos, P), impostoTabela)
-
+const calcularModelo = (
+  rendimentos: number,
+  deducoes: number,
+  reducaoLei: number,
+  tabela: readonly FaixaIr[],
+): Modelo => {
+  const base = Math.max(0, rendimentos - deducoes)
+  const { aliquotaBp, imposto: impostoTabela } = impostoPelaTabela(base, tabela)
+  const reducao = Math.min(reducaoLei, impostoTabela)
   return {
     deducoes,
     base,
-    aliquotaBp: faixa.aliquotaBp,
+    aliquotaBp,
     impostoTabela,
     reducao,
     impostoDevido: impostoTabela - reducao,
   }
 }
 
-const calcularEducacao = (despesas: DespesaEducacao[], limitePorPessoa: number) => {
-  const valoresPorPessoa = new Map<string, number>()
-
-  for (const despesa of despesas) {
-    if (!despesa.dedutivel) continue
-
-    const valor = valorNaoNegativo(despesa.valor)
-    valoresPorPessoa.set(despesa.pessoa, (valoresPorPessoa.get(despesa.pessoa) ?? 0) + valor)
-  }
-
-  return [...valoresPorPessoa.values()].reduce(
-    (total, valor) => total + Math.min(limitePorPessoa, valor),
-    0,
-  )
-}
-
+// Ajuste anual (RF-06): calcula os dois modelos e fica com o de menor imposto. Função pura, sem
+// banco nem tela; devolve os intermediários para a tela explicar a conta.
 export function calcularAjusteAnual(
   entrada: Entrada,
   P: ParametrosIrpf = parametros(2026),
 ): Resultado {
-  const rendimentos = somaFonte(entrada.fontes, 'rendimentos')
-  const previdencia = somaFonte(entrada.fontes, 'previdencia')
-  const irrfRetido = somaFonte(entrada.fontes, 'irrf')
-  const dependentes = valorNaoNegativo(entrada.dependentes)
-  const pensoes = valorNaoNegativo(entrada.pensoes)
-  const totalSaude = entrada.saude.reduce(
-    (total, despesa) =>
-      total +
-      (despesa.dedutivel
-        ? Math.max(0, valorNaoNegativo(despesa.valor) - valorNaoNegativo(despesa.reembolso))
-        : 0),
-    0,
+  validarEntrada(entrada)
+
+  const rendimentos = somar(entrada.fontes, (fonte) => fonte.rendimentos)
+  const totalPrevidencia = somar(entrada.fontes, (fonte) => fonte.previdencia)
+  const irrfRetido = somar(entrada.fontes, (fonte) => fonte.irrf)
+
+  const totalSaude = somar(
+    entrada.saude.filter((despesa) => despesa.dedutivel),
+    (despesa) => Math.max(0, despesa.valor - despesa.reembolso),
   )
   const totalEducacao = calcularEducacao(entrada.educacao, P.limiteEducacaoPorPessoa)
-  const deducoesCompleto =
-    previdencia +
-    P.dependente * dependentes +
-    pensoes +
-    totalSaude +
-    totalEducacao
-  const deducoesSimplificado = Math.min(
-    mulDiv(rendimentos, P.simplificado.percentual, 100),
-    P.simplificado.teto,
+  const deducaoDependentes = entrada.dependentes * P.dependente
+
+  // A redução usa o rendimento bruto do ano, e não a base: é a mesma nos dois modelos.
+  const reducaoLei = reducaoDaLei(rendimentos, P.reducaoAnual)
+  const completo = calcularModelo(
+    rendimentos,
+    totalPrevidencia + deducaoDependentes + entrada.pensoes + totalSaude + totalEducacao,
+    reducaoLei,
+    P.tabelaAnual,
   )
-  const completo = calcularModelo(rendimentos, deducoesCompleto, P)
-  const simplificado = calcularModelo(rendimentos, deducoesSimplificado, P)
+  const simplificado = calcularModelo(
+    rendimentos,
+    Math.min(mulDiv(rendimentos, P.simplificado.percentual, 100), P.simplificado.teto),
+    reducaoLei,
+    P.tabelaAnual,
+  )
+
+  // Em empate, fica o simplificado.
   const modelo = completo.impostoDevido < simplificado.impostoDevido ? 'completo' : 'simplificado'
   const impostoDevido = modelo === 'completo' ? completo.impostoDevido : simplificado.impostoDevido
 
   return {
     rendimentos,
     irrfRetido,
+    totalPrevidencia,
+    deducaoDependentes,
+    totalPensoes: entrada.pensoes,
     totalSaude,
     totalEducacao,
     completo,
@@ -155,6 +157,6 @@ export function calcularAjusteAnual(
     modelo,
     impostoDevido,
     resultado: irrfRetido - impostoDevido,
-    faltaParaCompleto: Math.max(0, deducoesSimplificado - deducoesCompleto),
+    faltaParaCompleto: Math.max(0, simplificado.deducoes - completo.deducoes),
   }
 }

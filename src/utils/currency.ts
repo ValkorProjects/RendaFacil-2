@@ -6,6 +6,13 @@ export const formatCurrency = (amountInCents: number) =>
     currency: 'BRL',
   })
 
+// The same text the money mask below produces, for values set from code.
+export const formatMoneyInput = (amountInCents: number) =>
+  `R$ ${(amountInCents / 100).toLocaleString('pt-BR', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`
+
 export const moneyConfig = {
   masked: true,
   prefix: 'R$ ',
