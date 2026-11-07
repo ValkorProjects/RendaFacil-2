@@ -1,17 +1,43 @@
 <script setup lang="ts">
-import { RouterView } from 'vue-router'
+import { defineAsyncComponent, onMounted, ref, watch } from 'vue'
+import { RouterView, useRoute } from 'vue-router'
 import BottomNav from '@/components/BottomNav.vue'
+
+const UserView = defineAsyncComponent(() => import('@/views/UserView.vue'))
+const ready = ref(false)
+const isGuest = ref(true)
+const route = useRoute()
+
+onMounted(() => {
+  const init = () => {
+    void import('@/stores/auth').then(({ useAuthStore }) => {
+      const auth = useAuthStore()
+      watch(
+        [() => auth.ready, () => auth.isGuest],
+        ([authReady, guest]) => {
+          ready.value = authReady
+          isGuest.value = guest
+        },
+        { immediate: true },
+      )
+    })
+  }
+
+  requestAnimationFrame(() => window.setTimeout(init, 0))
+})
 </script>
 
 <template>
   <main class="app-main">
-    <RouterView v-slot="{ Component }">
+    <p v-if="!ready" class="auth-loading" role="status">Verificando sua sessão…</p>
+    <UserView v-else-if="isGuest && !route.meta.public" />
+    <RouterView v-else v-slot="{ Component }">
       <Transition name="page" mode="out-in">
         <component :is="Component" />
       </Transition>
     </RouterView>
   </main>
-  <BottomNav />
+  <BottomNav v-if="ready && !isGuest" />
 </template>
 
 <style scoped>
@@ -21,6 +47,10 @@ import BottomNav from '@/components/BottomNav.vue'
   min-height: 100dvh;
   padding: calc(1.5rem + env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right))
     var(--nav-clearance) max(1rem, env(safe-area-inset-left));
+}
+
+.auth-loading {
+  color: var(--color-text-muted);
 }
 
 .page-enter-active,

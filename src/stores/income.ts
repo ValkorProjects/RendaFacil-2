@@ -154,6 +154,11 @@ export const useIncomeStore = defineStore('income', () => {
     draftEditingRegistrationId.value = null
   }
 
+  const clearAccountData = () => {
+    registrations.value = []
+    resetDraft()
+  }
+
   const saveDraft = () => {
     if (!canSaveDraft.value) return false
 
@@ -163,9 +168,10 @@ export const useIncomeStore = defineStore('income', () => {
         .filter((income) => cents(income.amount) > 0)
         .map((income) => ({ ...income })),
       dependents: draftHasDependents.value
-        ? draftDependents.value
-            .filter((dependent) => cents(dependent.amount) > 0)
-            .map((dependent) => ({ ...dependent }))
+        ? draftDependents.value.map((dependent) => ({
+            ...dependent,
+            amount: dependent.incomeType === 'none' ? '' : dependent.amount,
+          }))
         : [],
     }
 
@@ -276,5 +282,6 @@ export const useIncomeStore = defineStore('income', () => {
     setDraftHasDependents,
     setDraftDependentCount,
     saveDraft,
+    clearAccountData,
   }
 })
