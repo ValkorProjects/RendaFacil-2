@@ -41,8 +41,8 @@ const initials = computed(() =>
 const pendingEmail = computed(() =>
   user.value?.new_email !== user.value?.email ? user.value?.new_email : '',
 )
-const draft = reactive({ name: '', email: '', phone: '' })
-const access = reactive({ name: '', email: '', phone: '', password: '', confirmation: '' })
+const draft = reactive({ name: '', email: '' })
+const access = reactive({ name: '', email: '', password: '', confirmation: '' })
 const consentAccepted = ref(false)
 const accessMode = ref<'signin' | 'signup' | 'forgot'>('signin')
 const editing = ref(false)
@@ -106,7 +106,7 @@ function openPasswordDialog() {
 async function resendConfirmation() {
   if (busy.value) return
   clearMessages()
-  const validationError = validateProfile({ name: 'Login', email: access.email, phone: '' })
+  const validationError = validateProfile({ name: 'Login', email: access.email })
   if (validationError) {
     errorMessage.value = validationError
     return
@@ -196,8 +196,8 @@ watch(
     deleteDialog.value?.close()
     deleteError.value = ''
     editing.value = false
-    Object.assign(draft, { name: '', email: '', phone: '' })
-    Object.assign(access, { name: '', email: '', phone: '', password: '', confirmation: '' })
+    Object.assign(draft, { name: '', email: '' })
+    Object.assign(access, { name: '', email: '', password: '', confirmation: '' })
     consentAccepted.value = false
     clearMessages()
   },
@@ -226,7 +226,7 @@ function startEditing() {
 }
 
 function cancelEditing() {
-  Object.assign(draft, { name: '', email: '', phone: '' })
+  Object.assign(draft, { name: '', email: '' })
   editing.value = false
   clearMessages()
 }
@@ -261,7 +261,7 @@ async function submitAccess() {
   const signingUp = accessMode.value === 'signup'
   const requestingReset = accessMode.value === 'forgot'
   const validationError = validateProfile(
-    signingUp ? access : { name: 'Login', email: access.email, phone: '' },
+    signingUp ? access : { name: 'Login', email: access.email },
   )
   if (validationError) {
     errorMessage.value = validationError
@@ -343,7 +343,7 @@ async function signOut() {
           <span v-else>{{ initials }}</span>
         </div>
         <div class="identity">
-          <span class="account-badge">{{ isGuest ? 'Visitante' : 'Conta cadastrada' }}</span>
+          <span class="account-badge">{{ isGuest ? 'Acesso visitante' : 'Conta cadastrada' }}</span>
           <h2>{{ isGuest ? 'Entre para continuar' : displayName }}</h2>
           <p v-if="isGuest">Faça login ou crie sua conta para acessar o aplicativo.</p>
           <p v-else>{{ profile.email || 'E-mail não informado' }}</p>
@@ -657,8 +657,8 @@ async function signOut() {
                     <RouterLink :to="{ name: 'privacy' }" target="_blank">
                       política de privacidade
                     </RouterLink>
-                    e autorizo o uso dos meus dados para calcular minha estimativa de Imposto de
-                    Renda.
+                    e autorizo o uso dos meus dados, inclusive despesas de saúde, para calcular a
+                    estimativa do meu Imposto de Renda.
                   </span>
                 </label>
                 <button type="submit" class="button access-submit">

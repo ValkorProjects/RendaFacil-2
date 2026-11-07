@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue'
-import { defineAsyncComponent } from 'vue'
+import { defineAsyncComponent, onMounted, ref, watch } from 'vue'
 import { RouterView, useRoute } from 'vue-router'
 import BottomNav from '@/components/BottomNav.vue'
 

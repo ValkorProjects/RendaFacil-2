@@ -3,7 +3,6 @@ import type { User } from '@supabase/supabase-js'
 export interface ProfileFields {
   name: string
   email: string
-  phone: string
 }
 
 export function readProfile(user: User | null): ProfileFields {
@@ -11,24 +10,18 @@ export function readProfile(user: User | null): ProfileFields {
   const name = [metadata.full_name, metadata.name].find(
     (value) => typeof value === 'string' && value.trim(),
   )
-  // An empty contact phone intentionally overrides a phone used for authentication.
-  const phone = [metadata.phone, metadata.phone_number, user?.phone].find(
-    (value) => typeof value === 'string',
-  )
-
-  return { name: name ?? '', email: user?.email ?? '', phone: phone ?? '' }
+  return { name: name ?? '', email: user?.email ?? '' }
 }
 
 export function normalizeProfile(profile: ProfileFields): ProfileFields {
   return {
     name: profile.name.trim(),
     email: profile.email.trim(),
-    phone: profile.phone.trim().replace(/[\s().-]/g, ''),
   }
 }
 
 export function validateProfile(profile: ProfileFields, requireEmail = true): string | null {
-  const { name, email, phone } = normalizeProfile(profile)
+  const { name, email } = normalizeProfile(profile)
   if (!name || name.length > 100) return 'Informe seu nome com até 100 caracteres.'
   if (
     (requireEmail || email) &&
@@ -36,27 +29,12 @@ export function validateProfile(profile: ProfileFields, requireEmail = true): st
   ) {
     return 'Informe um e-mail válido.'
   }
-  if (phone && !/^\+?\d{10,15}$/.test(phone)) {
-    return 'Informe um telefone com DDD, entre 10 e 15 dígitos, ou deixe o campo vazio.'
-  }
   return null
-}
-
-export function formatPhone(phone: string): string {
-  const normalized = normalizeProfile({ name: '', email: '', phone }).phone
-  const local = normalized.replace(/^\+55(?=\d{10,11}$)/, '')
-  if (/^\d{10,11}$/.test(local)) {
-    const prefix = normalized.startsWith('+55') ? '+55 ' : ''
-    return `${prefix}(${local.slice(0, 2)}) ${local.slice(2, -4)}-${local.slice(-4)}`
-  }
-  return phone
 }
 
 export function authErrorMessage(error: unknown): string {
   const record =
-    typeof error === 'object' && error !== null
-      ? (error as Record<string, unknown>)
-      : null
+    typeof error === 'object' && error !== null ? (error as Record<string, unknown>) : null
 
   const getText = (key: string): string => {
     const value = record?.[key]
@@ -89,10 +67,7 @@ export function authErrorMessage(error: unknown): string {
     return 'Escolha uma senha diferente da atual.'
   }
 
-  if (
-    codes.includes('reauthentication_needed') ||
-    codes.includes('reauthentication_not_valid')
-  ) {
+  if (codes.includes('reauthentication_needed') || codes.includes('reauthentication_not_valid')) {
     return 'Entre novamente na sua conta e tente trocar a senha.'
   }
 
@@ -113,10 +88,7 @@ export function authErrorMessage(error: unknown): string {
     return 'Confirme seu e-mail pelo link recebido antes de entrar.'
   }
 
-  if (
-    codes.includes('user_already_exists') ||
-    codes.includes('email_exists')
-  ) {
+  if (codes.includes('user_already_exists') || codes.includes('email_exists')) {
     return 'Não foi possível usar esse e-mail. Tente entrar na sua conta.'
   }
 
@@ -126,7 +98,6 @@ export function authErrorMessage(error: unknown): string {
 
   return 'Não foi possível concluir a solicitação. Tente novamente mais tarde.'
 }
-
 
 export function validatePasswordChange(current: string, password: string, confirmation: string) {
   if (!current) return 'Informe sua senha atual.'

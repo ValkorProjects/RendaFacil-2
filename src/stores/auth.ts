@@ -11,7 +11,7 @@ import {
 } from '@/utils/profile'
 import { useIncomeStore } from '@/stores/income'
 
-export const CONSENT_VERSION = '2026-11-06'
+export const CONSENT_VERSION = '2026-11-06-v2'
 
 export const useAuthStore = defineStore('auth', () => {
   const income = useIncomeStore()
@@ -74,7 +74,6 @@ export const useAuthStore = defineStore('auth', () => {
         data: {
           full_name: profile.name,
           consentimento_versao: CONSENT_VERSION,
-          consentimento_em: new Date().toISOString(),
         },
       },
     })
@@ -141,7 +140,7 @@ export const useAuthStore = defineStore('auth', () => {
     })
     if (verificationError) throw verificationError
     if (data.user.id !== accountId || user.value?.id !== accountId)
-      throw new Error('Conta Incorreta')
+      throw new Error('A conta conectada mudou. Entre novamente e tente de novo.')
     const { error } = await client.auth.updateUser({ password, current_password: current })
     if (error) throw error
   }
