@@ -174,7 +174,8 @@ npm run build
 │   └── main.ts                Ponto de entrada
 ├── supabase/
 │   ├── config.toml            Configuração do Supabase local
-│   └── migrations/            Tabelas e políticas de acesso (RLS) do banco
+│   ├── migrations/            Tabelas e políticas de acesso (RLS) do banco
+│   └── tests/database/        Testes de RLS e privilégios (pgTAP)
 ├── .env.example               Modelo das variáveis de ambiente
 ├── vite.config.ts             Configuração do Vite e do PWA
 └── vitest.config.ts           Configuração dos testes
@@ -245,6 +246,42 @@ npx supabase gen types typescript --project-id seu-project-ref > src/types/datab
 ```
 
 No Windows, rode o segundo comando no Prompt de Comando, no Git Bash ou no PowerShell 7+. O Windows PowerShell 5.1 salva a saída de `>` em UTF-16, e o Vite e o ESLint não conseguem ler o arquivo. Gere os tipos de novo sempre que o banco mudar.
+
+### Testes do banco (RLS)
+
+O app fala com o Supabase direto do navegador, com a chave pública. A única barreira entre um usuário e os dados de outro são as políticas de RLS e os privilégios definidos nas migrations. Se uma migration apagar uma política ou liberar um privilégio, nada no app quebra, e a falha fica aberta. Os testes em [`supabase/tests/database/`](supabase/tests/database/) conferem isso automaticamente, com [pgTAP](https://pgtap.org/), num banco criado do zero pelas migrations:
+
+- um usuário não lê, não altera, não apaga e não cria dados de outro, nem dentro da declaração de outro;
+- `anon` não tem nenhum privilégio, e `authenticated` tem só `SELECT`, `INSERT`, `UPDATE` e `DELETE`;
+- toda tabela de `public` tem RLS ligada;
+- apagar o usuário em `auth.users` apaga todas as linhas dele;
+- dinheiro fica só em `bigint`, e não há colunas de CPF, data de nascimento ou diagnóstico.
+
+Para rodar localmente, é preciso ter o [Docker](https://docs.docker.com/get-started/get-docker/) instalado e aberto. Suba o Postgres local (a primeira vez baixa as imagens e demora alguns minutos):
+
+```bash
+npx supabase db start
+```
+
+```bash
+npx supabase test db
+```
+
+Depois de mudar uma migration, recrie o banco antes de testar de novo:
+
+```bash
+npx supabase db reset
+```
+
+Para desligar os containers ao terminar:
+
+```bash
+npx supabase stop
+```
+
+No CI, o job `database` roda esses testes nos pull requests que mudam algo em `supabase/`.
+
+Uma tabela nova em `public` precisa de RLS ligada, de políticas e de `revoke` dos privilégios que o Supabase concede por padrão a `anon` e `authenticated`. Sem isso, os testes falham.
 
 ### Funcionamento offline
 
