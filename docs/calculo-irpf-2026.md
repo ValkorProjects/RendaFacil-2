@@ -284,16 +284,18 @@ const resultado = calcularAjusteAnual({
 
 Enquanto as telas de Rendas (RF-12), Dedutíveis (RF-13) e a Home (RF-14) não existem na forma final, a tela de cadastro de rendimentos já usa o motor, com os dados guardados só em memória:
 
-| Na tela (por mês)                                    | No motor (por ano, × 12)                     |
-| ---------------------------------------------------- | -------------------------------------------- |
-| Valor mensal de cada rendimento                      | `fontes[].rendimentos`                       |
-| INSS descontado no mês                               | `fontes[].previdencia`                       |
-| IR retido na fonte no mês                            | `fontes[].irrf`                              |
-| Renda tributável de dependente (estágio, outros)     | uma fonte a mais, sem INSS nem IRRF          |
-| Pensão recebida por dependente                       | fica fora (isenta)                           |
-| Cada dependente, com ou sem renda                    | `dependentes`                                |
-| Pensão alimentícia paga                              | `pensoes`                                    |
-| —                                                    | `saude` e `educacao` vazios (sem tela ainda) |
+| Na tela (por mês)                                | No motor (por ano, × 12)                     |
+| ------------------------------------------------ | -------------------------------------------- |
+| Valor mensal de cada rendimento                  | `fontes[].rendimentos`                       |
+| INSS descontado no mês                           | `fontes[].previdencia`                       |
+| IR retido na fonte no mês                        | `fontes[].irrf`                              |
+| Renda tributável de dependente (estágio, outros) | uma fonte a mais, sem INSS nem IRRF          |
+| Pensão recebida por dependente                   | fica fora (isenta)                           |
+| Cada dependente, com ou sem renda                | `dependentes`                                |
+| Pensão alimentícia paga                          | `pensoes`                                    |
+| —                                                | `saude` e `educacao` vazios (sem tela ainda) |
+
+Para uma fonte CLT, a tela compara o INSS e o IR retido digitados com a folha mensal (`incomeEntryWarnings`) e avisa, sem bloquear, quando diferem mais de R$ 0,10 (INSS acima da tabela, IR retido diferente da tabela). Férias, 13º, um segundo empregador e deduções extras explicam diferenças legítimas, e o informe de rendimentos é o que vale. A visão **Mensal** do cartão mostra a conta da folha ao lado dos valores informados. Ela supõe o mesmo salário o ano todo; escolher um mês específico está como TODO em `TaxEstimateCard.vue`.
 
 A conversão fica em `buildTaxInput`, em [`src/stores/income.ts`](../src/stores/income.ts). O botão "Calcular INSS e IR pelo salário" usa `calcularFolhaMensal` com os dependentes e a pensão do formulário. Todas as categorias de renda são tratadas como rendimento tributável; aluguéis, trabalho autônomo e aposentadoria têm regras próprias que ficam fora do MVP (seção 9), e o cartão da estimativa avisa isso.
 

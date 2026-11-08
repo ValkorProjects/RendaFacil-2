@@ -2,11 +2,15 @@ import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it } from 'vitest'
 
 import {
+  buildPayrollRows,
   buildTaxInput,
   estimateTax,
   incomeEntryError,
+  incomeEntryWarnings,
+  payrollEstimate,
   useIncomeStore,
   type IncomeRegistration,
+  type RegisteredIncomeEntry,
 } from '@/stores/income'
 
 // The income screen works with monthly amounts typed into masked inputs ("R$ 6.500,00"); the
@@ -177,5 +181,97 @@ describe('estimateTax', () => {
   it('has nothing to estimate without income', () => {
     expect(estimateTax([])).toBeNull()
     expect(estimateTax([registration({ alimonyPaid: 'R$ 800,00' })])).toBeNull()
+  })
+})
+
+// Intl puts a non-breaking space after "R$".
+const plain = (text: string | undefined) => (text ?? '').replace(/\u00a0/g, ' ')
+
+describe('INSS and income tax checks against the payslip calculation', () => {
+  const clt = (fields: Partial<RegisteredIncomeEntry>): RegisteredIncomeEntry => ({
+    id: 1,
+    category: 'clt',
+    amount: 'R$ 6.500,00',
+    inss: '',
+    irrf: '',
+    ...fields,
+  })
+
+  it('estimates INSS and IRRF for a CLT salary (6.500, 2 dependents, 800 of alimony)', () => {
+    expect(payrollEstimate(clt({}), 2, 'R$ 800,00')).toMatchObject({ inss: 71_151, irrf: 24_842 })
+  })
+
+  it('has no estimate for other categories or without a salary', () => {
+    expect(payrollEstimate(clt({ category: 'alugueis' }), 0, '')).toBeNull()
+    expect(payrollEstimate(clt({ amount: '' }), 0, '')).toBeNull()
+  })
+
+  it('warns when the typed INSS is above the table: 6.500 with INSS of 1.300', () => {
+    const warnings = incomeEntryWarnings(clt({ inss: 'R$ 1.300,00' }), 2, 'R$ 800,00')
+
+    expect(warnings).toHaveLength(1)
+    expect(plain(warnings[0])).toContain('INSS informado (R$ 1.300,00)')
+    expect(plain(warnings[0])).toContain('R$ 711,51')
+  })
+
+  it('warns when the typed income tax differs from the payroll table', () => {
+    const warnings = incomeEntryWarnings(
+      clt({ inss: 'R$ 711,51', irrf: 'R$ 900,00' }),
+      2,
+      'R$ 800,00',
+    )
+
+    expect(warnings).toHaveLength(1)
+    expect(plain(warnings[0])).toContain('IR retido informado (R$ 900,00)')
+    expect(plain(warnings[0])).toContain('R$ 248,42')
+  })
+
+  it('stays quiet when the values match (to the cent) or are not typed yet', () => {
+    expect(
+      incomeEntryWarnings(clt({ inss: 'R$ 711,51', irrf: 'R$ 248,42' }), 2, 'R$ 800,00'),
+    ).toEqual([])
+    expect(incomeEntryWarnings(clt({}), 2, 'R$ 800,00')).toEqual([])
+    // within the R$ 0,10 rounding tolerance
+    expect(
+      incomeEntryWarnings(clt({ inss: 'R$ 711,55', irrf: 'R$ 248,40' }), 2, 'R$ 800,00'),
+    ).toEqual([])
+  })
+
+  it('does not warn about a lower INSS: a second employer shares the ceiling', () => {
+    expect(incomeEntryWarnings(clt({ inss: 'R$ 400,00' }), 2, 'R$ 800,00')).toEqual([])
+  })
+
+  it('never blocks saving: the warnings are only advice', () => {
+    const store = useIncomeStore()
+    Object.assign(store.draftIncomes[0]!, { amount: 'R$ 6.500,00', inss: 'R$ 1.300,00' })
+
+    expect(store.canSaveDraft).toBe(true)
+  })
+
+  it('builds the monthly rows for the card, with the payroll only for CLT', () => {
+    const rows = buildPayrollRows([
+      registration({
+        incomes: [
+          { id: 1, category: 'clt', amount: 'R$ 6.500,00', inss: 'R$ 711,51', irrf: 'R$ 248,42' },
+          { id: 2, category: 'alugueis', amount: 'R$ 1.000,00', inss: '', irrf: '' },
+          { id: 3, category: 'clt', amount: '', inss: '', irrf: '' },
+        ],
+        dependents: [
+          { id: 1, incomeType: 'none', amount: '' },
+          { id: 2, incomeType: 'none', amount: '' },
+        ],
+        alimonyPaid: 'R$ 800,00',
+      }),
+    ])
+
+    expect(rows).toHaveLength(2)
+    expect(rows[0]).toMatchObject({
+      informado: { bruto: 650_000, inss: 71_151, irrf: 24_842 },
+      dependentes: 2,
+      deducaoDependentes: 37_918,
+      pensao: 80_000,
+      folha: { inss: 71_151, irrf: 24_842, base: 460_931 },
+    })
+    expect(rows[1]?.folha).toBeNull()
   })
 })

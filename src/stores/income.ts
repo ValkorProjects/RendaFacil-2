@@ -3,11 +3,13 @@ import { defineStore } from 'pinia'
 import {
   calcularAjusteAnual,
   calcularFolhaMensal,
+  parametros,
   type Entrada,
   type Fonte,
   type Resultado,
+  type ResultadoMensal,
 } from '@/irpf'
-import { cents, formatMoneyInput } from '@/utils/currency'
+import { cents, formatCurrency, formatMoneyInput } from '@/utils/currency'
 
 const MONTHS_PER_YEAR = 12
 const annualize = (amountInCents: number) => amountInCents * MONTHS_PER_YEAR
@@ -57,6 +59,87 @@ export const incomeEntryError = (entry: RegisteredIncomeEntry) => {
   return ''
 }
 
+// Payslip figures can differ by a few cents from the table (rounding), so smaller differences
+// are not flagged. Same R$ 0,10 tolerance as RF-18.
+const PAYROLL_TOLERANCE = 10
+
+// What the monthly payroll calculation gives for a CLT source, assuming the same salary every
+// month. Null for other categories (they have their own rules, outside the MVP) or when the
+// engine can't calculate it.
+export const payrollEstimate = (
+  entry: RegisteredIncomeEntry,
+  dependents: number,
+  alimonyPaid: string,
+): ResultadoMensal | null => {
+  if (entry.category !== 'clt' || cents(entry.amount) === 0) return null
+  try {
+    return calcularFolhaMensal({
+      bruto: cents(entry.amount),
+      dependentes: dependents,
+      pensao: cents(alimonyPaid),
+    })
+  } catch {
+    return null
+  }
+}
+
+// Warnings (never blocking) when the typed INSS or income tax doesn't match the payslip
+// calculation. The informe de rendimentos is what counts, and it can differ for real reasons:
+// férias, a second employer sharing the INSS ceiling, extra deductions.
+export const incomeEntryWarnings = (
+  entry: RegisteredIncomeEntry,
+  dependents: number,
+  alimonyPaid: string,
+): string[] => {
+  const folha = payrollEstimate(entry, dependents, alimonyPaid)
+  if (!folha) return []
+  const warnings: string[] = []
+  if (entry.inss.trim() && cents(entry.inss) > folha.inss + PAYROLL_TOLERANCE) {
+    warnings.push(
+      `O INSS informado (${formatCurrency(cents(entry.inss))}) é maior que o estimado pela tabela do INSS para esse salário (${formatCurrency(folha.inss)}). Confira o holerite.`,
+    )
+  }
+  if (entry.irrf.trim() && Math.abs(cents(entry.irrf) - folha.irrf) > PAYROLL_TOLERANCE) {
+    warnings.push(
+      `O IR retido informado (${formatCurrency(cents(entry.irrf))}) difere do estimado pela tabela da folha (${formatCurrency(folha.irrf)}). Férias, 13º ou deduções extras podem explicar a diferença; confira o holerite.`,
+    )
+  }
+  return warnings
+}
+
+// One row per income source for the monthly view of the estimate card.
+export interface PayrollRow {
+  id: string
+  label: string
+  informado: { bruto: number; inss: number; irrf: number }
+  dependentes: number
+  deducaoDependentes: number
+  pensao: number
+  folha: ResultadoMensal | null
+}
+
+export const buildPayrollRows = (registrations: readonly IncomeRegistration[]): PayrollRow[] =>
+  registrations.flatMap((registration) =>
+    registration.incomes
+      .filter((income) => cents(income.amount) > 0)
+      .map((income) => {
+        const dependentes = registration.dependents.length
+        return {
+          id: `${registration.id}-${income.id}`,
+          label: incomeCategoryLabels[income.category],
+          informado: {
+            bruto: cents(income.amount),
+            inss: cents(income.inss),
+            irrf: cents(income.irrf),
+          },
+          dependentes,
+          deducaoDependentes: dependentes * parametros(2026).mensal.dependente,
+          pensao: cents(registration.alimonyPaid),
+          folha: payrollEstimate(income, dependentes, registration.alimonyPaid),
+        }
+      }),
+  )
+
 const isTaxableDependentIncome = (dependent: RegisteredDependent) =>
   dependent.incomeType === 'estagio' || dependent.incomeType === 'outros'
 
@@ -84,7 +167,10 @@ export const buildTaxInput = (registrations: readonly IncomeRegistration[]): Ent
     (total, registration) => total + annualize(cents(registration.alimonyPaid)),
     0,
   ),
-  // There is no expenses screen yet (RF-13), so health and education count as zero.
+  // TODO(RF-13): there is no expenses screen yet, so health and education count as zero. When it
+  // lands, fill `saude` and `educacao` from the saved expenses (`avaliarDespesa` in
+  // src/irpf/entrada.ts already decides what deducts), and drop `alimonyPaid` below: alimony paid
+  // becomes an expense with its legal-basis confirmation, entered once there (RF-12 says so).
   saude: [],
   educacao: [],
 })
@@ -362,6 +448,9 @@ export const useIncomeStore = defineStore('income', () => {
     () => dependentCount.value + draftRegistration.value.dependents.length,
   )
   const taxEstimate = computed(() => estimateTax(registrations.value))
+  const summaryPayroll = computed(() =>
+    buildPayrollRows([...registrations.value, draftRegistration.value]),
+  )
   const summaryTaxEstimate = computed(() =>
     estimateTax([...registrations.value, draftRegistration.value]),
   )
@@ -377,6 +466,7 @@ export const useIncomeStore = defineStore('income', () => {
     summaryDependentCount,
     taxEstimate,
     summaryTaxEstimate,
+    summaryPayroll,
     addRegistration,
     removeRegistration,
     updateRegistration,

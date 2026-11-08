@@ -10,6 +10,7 @@ import {
   dependentIncomeLabels,
   incomeCategoryLabels,
   incomeEntryError,
+  incomeEntryWarnings,
   type DependentIncome,
   type IncomeCategory,
   type RegisteredDependent,
@@ -39,6 +40,15 @@ const editingIncomes = ref<RegisteredIncomeEntry[]>([])
 const editingDependents = ref<RegisteredDependent[]>([])
 const editingAlimony = ref('')
 const salaryErrors = ref<Record<number, string>>({})
+
+const draftWarnings = (income: RegisteredIncomeEntry) =>
+  incomeEntryWarnings(
+    income,
+    incomeStore.draftHasDependents ? incomeStore.draftDependents.length : 0,
+    incomeStore.draftAlimony,
+  )
+const editingWarnings = (income: RegisteredIncomeEntry | undefined) =>
+  income ? incomeEntryWarnings(income, editingDependents.value.length, editingAlimony.value) : []
 
 const fillFromSalary = (id: number) => {
   salaryErrors.value[id] = incomeStore.fillDraftIncomeFromSalary(id)
@@ -226,6 +236,16 @@ const saveIncomeAndReturn = () => {
                 >
                   {{ incomeEntryError(editingIncomes[index]) }}
                 </p>
+                <template v-if="editingRegistrationId === registration.id">
+                  <p
+                    v-for="warning in editingWarnings(editingIncomes[index])"
+                    :key="warning"
+                    class="field-warning"
+                    role="status"
+                  >
+                    {{ warning }}
+                  </p>
+                </template>
               </div>
               <div
                 v-for="(dependent, index) in registration.dependents"
@@ -372,6 +392,14 @@ const saveIncomeAndReturn = () => {
             </p>
             <p v-if="incomeEntryError(income)" class="field-error" role="alert">
               {{ incomeEntryError(income) }}
+            </p>
+            <p
+              v-for="warning in draftWarnings(income)"
+              :key="warning"
+              class="field-warning"
+              role="status"
+            >
+              {{ warning }}
             </p>
           </article>
         </div>
@@ -527,7 +555,10 @@ const saveIncomeAndReturn = () => {
           </div>
         </dl>
       </footer>
-      <TaxEstimateCard :estimate="incomeStore.summaryTaxEstimate" />
+      <TaxEstimateCard
+        :estimate="incomeStore.summaryTaxEstimate"
+        :payroll="incomeStore.summaryPayroll"
+      />
       <button
         class="button add-registration-button"
         type="button"
@@ -972,6 +1003,14 @@ select.field-control option {
   color: var(--color-danger);
   font-size: 0.8rem;
   font-weight: 700;
+}
+
+.field-warning {
+  margin-top: 0.35rem;
+  padding-left: 0.6rem;
+  border-left: 3px solid var(--color-accent);
+  color: var(--color-text);
+  font-size: 0.8rem;
 }
 
 .salary-button {
