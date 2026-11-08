@@ -7,6 +7,7 @@ import {
   estimateTax,
   incomeEntryError,
   incomeEntryWarnings,
+  inssCeilingWarning,
   payrollEstimate,
   useIncomeStore,
   type IncomeRegistration,
@@ -273,5 +274,38 @@ describe('INSS and income tax checks against the payslip calculation', () => {
       folha: { inss: 71_151, irrf: 24_842, base: 460_931 },
     })
     expect(rows[1]?.folha).toBeNull()
+  })
+})
+
+describe('INSS ceiling warning (RF-12)', () => {
+  const source = (id: number, inss: string) => ({
+    id,
+    category: 'clt' as const,
+    amount: 'R$ 6.500,00',
+    inss,
+    irrf: '',
+  })
+
+  it('stays quiet up to the yearly ceiling (12 × 988,09)', () => {
+    expect(inssCeilingWarning([registration({ incomes: [source(1, 'R$ 988,09')] })])).toBe('')
+  })
+
+  it('warns when two sources together pass it: CLT plus a pró-labore', () => {
+    const warning = inssCeilingWarning([
+      registration({ incomes: [source(1, 'R$ 711,51'), source(2, 'R$ 330,00')] }),
+    ]).replace(/\u00a0/g, ' ')
+
+    expect(warning).toContain('R$ 12.498,12 por ano')
+    expect(warning).toContain('R$ 11.857,08 por ano')
+  })
+
+  it('adds the form being filled to the saved registrations', () => {
+    const store = useIncomeStore()
+    store.addRegistration(registration({ incomes: [source(1, 'R$ 711,51')] }))
+    expect(store.summaryInssWarning).toBe('')
+
+    Object.assign(store.draftIncomes[0]!, { amount: 'R$ 3.000,00', inss: 'R$ 330,00' })
+
+    expect(store.summaryInssWarning).not.toBe('')
   })
 })

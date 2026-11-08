@@ -404,6 +404,10 @@ const saveIncomeAndReturn = () => {
           </article>
         </div>
 
+        <p v-if="incomeStore.summaryInssWarning" class="field-warning" role="status">
+          {{ incomeStore.summaryInssWarning }}
+        </p>
+
         <button class="add-button" type="button" @click="incomeStore.addDraftIncome">
           <span aria-hidden="true">+</span>
           Adicionar outro rendimento

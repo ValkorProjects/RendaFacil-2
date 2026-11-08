@@ -107,6 +107,22 @@ export const incomeEntryWarnings = (
   return warnings
 }
 
+// RF-12: warns, without blocking, when the INSS of all sources adds up to more than the yearly
+// ceiling (12 × the monthly ceiling). It happens with more than one employer, since each one
+// withholds on its own, and it is also the first sign of a typing mistake.
+export const inssCeilingWarning = (registrations: readonly IncomeRegistration[]) => {
+  const total = annualize(
+    registrations.reduce(
+      (sum, registration) =>
+        sum + registration.incomes.reduce((subtotal, income) => subtotal + cents(income.inss), 0),
+      0,
+    ),
+  )
+  const ceiling = annualize(parametros(2026).tetoPrevidenciaMensal)
+  if (total <= ceiling) return ''
+  return `A soma do INSS das fontes (${formatCurrency(total)} por ano) passa do teto da previdência (${formatCurrency(ceiling)} por ano). Isso acontece com mais de um empregador, porque cada um desconta por conta própria. Confira os valores nos informes.`
+}
+
 // One row per income source for the monthly view of the estimate card.
 export interface PayrollRow {
   id: string
@@ -448,6 +464,9 @@ export const useIncomeStore = defineStore('income', () => {
     () => dependentCount.value + draftRegistration.value.dependents.length,
   )
   const taxEstimate = computed(() => estimateTax(registrations.value))
+  const summaryInssWarning = computed(() =>
+    inssCeilingWarning([...registrations.value, draftRegistration.value]),
+  )
   const summaryPayroll = computed(() =>
     buildPayrollRows([...registrations.value, draftRegistration.value]),
   )
@@ -467,6 +486,7 @@ export const useIncomeStore = defineStore('income', () => {
     taxEstimate,
     summaryTaxEstimate,
     summaryPayroll,
+    summaryInssWarning,
     addRegistration,
     removeRegistration,
     updateRegistration,

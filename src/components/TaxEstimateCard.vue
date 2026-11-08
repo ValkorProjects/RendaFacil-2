@@ -11,6 +11,10 @@ const props = defineProps<{ estimate: TaxEstimate | null; payroll: PayrollRow[] 
 // TODO: let the user pick a specific month. Férias, 13º and raises make months differ, and the
 // monthly view assumes the same salary all year.
 const view = ref<'anual' | 'mensal'>('anual')
+// Categories other than CLT go through the engine as if they were salary.
+const untreated = computed(() => [
+  ...new Set(props.payroll.filter((row) => !row.folha).map((row) => row.label)),
+])
 const showMonthly = computed(() => view.value === 'mensal' && props.payroll.length > 0)
 
 // Informed minus calculated, ignoring differences under the R$ 0,10 rounding tolerance.
@@ -279,6 +283,11 @@ const otherModel = computed(() =>
       </details>
     </template>
 
+    <p v-if="untreated.length" class="note" role="status">
+      <strong>Tratado como salário: {{ untreated.join(', ') }}.</strong> Essas rendas têm regras
+      próprias (o imposto pago no carnê-leão, por exemplo, não é descontado aqui), então o resultado
+      pode estar acima ou abaixo do real.
+    </p>
     <p class="note">
       Estimativa parcial: despesas de saúde e educação ainda não entram na conta, porque a tela de
       dedutíveis ainda não existe. Todas as rendas informadas são tratadas como rendimentos
