@@ -49,14 +49,15 @@ What the template ships with today:
 | State      | [Pinia](https://pinia.vuejs.org/)                                                   |
 | PWA        | [vite-plugin-pwa](https://vite-pwa-org.netlify.app/) (Workbox)                      |
 | Backend    | [Supabase](https://supabase.com/) via `@supabase/supabase-js` _(not yet connected)_ |
-| Quality    | ESLint, Prettier, `vue-tsc`                                                         |
+| Quality    | ESLint, Prettier, `vue-tsc`, [Vitest](https://vitest.dev/), GitHub Actions          |
 
 ## Getting started
 
 ### Prerequisites
 
-- [Node.js](https://nodejs.org/) `20.19` or newer (`22.13+` or `24+` also work)
-- npm (bundled with Node.js)
+- [Node.js](https://nodejs.org/) `24.x` (the version in `package.json` → `engines`)
+- npm 11 or newer (bundled with Node.js 24). Use it to add or update dependencies: npm 10 cannot
+  resolve Vite 8's optional peer dependencies and rewrites the lockfile.
 
 ### Install
 
@@ -105,25 +106,35 @@ Then open the "Network" URL that Vite prints. Note that installing the PWA does 
 | `npm run build`               | Type-check, then build for production into `dist/`              |
 | `npm run preview`             | Serve the production build locally                              |
 | `npm run type-check`          | Type-check the project with `vue-tsc`                           |
+| `npm test`                    | Run the unit tests once with Vitest                             |
+| `npm run test:watch`          | Run the unit tests and re-run them on every change              |
 | `npm run lint`                | Lint with ESLint and fix what can be fixed automatically        |
 | `npm run format`              | Format `src/` with Prettier                                     |
 | `npm run generate-pwa-assets` | Regenerate the app icons in `public/` from `public/favicon.svg` |
 
+Every pull request into `dev` or `main` runs ESLint, the Prettier check, the unit tests, the type-check and the production build in GitHub Actions ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)). Run the same checks locally before pushing.
+
 ## Project structure
 
 ```text
+├── .github/workflows/ci.yml Checks run on every pull request
+├── docs/
+│   └── calculo-irpf-2026.md How the income tax engine calculates (formulas and sources)
 ├── public/                  Static files copied as-is (favicon and PWA icons)
 ├── src/
 │   ├── assets/main.css      Global styles and design tokens (colours, glass effect)
 │   ├── components/
 │   │   ├── AppIcon.vue      Inline SVG icons
 │   │   ├── BottomNav.vue    Glass navigation island
-│   │   └── PageCard.vue     Glass card used by every sample page
+│   │   ├── PageCard.vue     Glass card used by every sample page
+│   │   └── TaxEstimateCard.vue  Tax estimate and "Ver o cálculo" on the income page
 │   ├── composables/
 │   │   └── usePwaInstall.ts In-app "Install app" button logic
+│   ├── irpf/                Income tax engine: pure functions, money in cents (tests in __tests__/ and *.test.ts)
 │   ├── lib/supabase.ts      Supabase client
 │   ├── router/index.ts      Route definitions
 │   ├── stores/auth.ts       Pinia store tracking the Supabase session
+│   ├── stores/income.ts     Income entered on the income page and its tax estimate (in memory)
 │   ├── types/
 │   │   └── database.types.ts  Supabase schema types (placeholder until generated)
 │   ├── views/               One component per page
@@ -132,7 +143,8 @@ Then open the "Network" URL that Vite prints. Note that installing the PWA does 
 ├── .env.example             Template for the environment variables
 ├── index.html               HTML entry point
 ├── pwa-assets.config.ts     Icon generation settings
-└── vite.config.ts           Vite and PWA (manifest, service worker) settings
+├── vite.config.ts           Vite and PWA (manifest, service worker) settings
+└── vitest.config.ts         Unit test settings
 ```
 
 Imports can use `@/` as a shortcut for `src/`, e.g. `import PageCard from '@/components/PageCard.vue'`.

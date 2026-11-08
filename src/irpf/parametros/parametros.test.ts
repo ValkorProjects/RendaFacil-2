@@ -27,8 +27,6 @@ describe('parametros', () => {
   })
 
   it('lança erro para ano não cadastrado (2027)', () => {
-    expect(() => parametros(2027)).toThrow(
-      'Parâmetros do ano-calendário 2027 não cadastrados.',
-    )
+    expect(() => parametros(2027)).toThrow('Parâmetros do ano-calendário 2027 não cadastrados.')
   })
 })
