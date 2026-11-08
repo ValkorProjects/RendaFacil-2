@@ -18,9 +18,9 @@ const {
   readProfile,
   normalizeProfile,
   validateProfile,
-  formatPhone,
   validatePasswordChange,
   authErrorMessage,
+  readAuthRedirect,
 } = await server.ssrLoadModule('/src/utils/profile.ts')
 const originalFetch = globalThis.fetch
 const originalWindow = globalThis.window
@@ -101,51 +101,57 @@ after(async () => {
   await server.close()
 })
 
-test('reads existing names and phones without treating a missing phone as an error', () => {
-  assert.deepEqual(readProfile(null), { name: '', email: '', phone: '' })
+test('reads names and emails, ignoring metadata that is not text', () => {
+  assert.deepEqual(readProfile(null), { name: '', email: '' })
   assert.deepEqual(
-    readProfile({
-      email: 'ana@example.com',
-      user_metadata: { name: 'Ana', phone_number: '11999998888' },
-    }),
-    { name: 'Ana', email: 'ana@example.com', phone: '11999998888' },
+    readProfile({ email: 'ana@example.com', user_metadata: { name: 'Ana', phone: '11999998888' } }),
+    { name: 'Ana', email: 'ana@example.com' },
   )
-  assert.equal(readProfile({ phone: '+5511999998888', user_metadata: { phone: '' } }).phone, '')
-  assert.equal(readProfile({ user_metadata: { full_name: 123, phone: {} } }).name, '')
+  assert.equal(readProfile({ user_metadata: { full_name: 123 } }).name, '')
 })
 
-test('validates names, emails and optional domestic or international phones', () => {
-  const profile = { name: ' Ana Silva ', email: ' ana@example.com ', phone: '+55 (11) 99999-8888' }
+test('validates and normalizes names and emails', () => {
+  const profile = { name: ' Ana Silva ', email: ' ana@example.com ' }
   assert.equal(validateProfile(profile), null)
-  assert.deepEqual(normalizeProfile(profile), {
-    name: 'Ana Silva',
-    email: 'ana@example.com',
-    phone: '+5511999998888',
-  })
-
-  test('distinguishes network errors from service errors', () => {
-    assert.match(
-      authErrorMessage(new TypeError('Failed to fetch')),
-      /conectar ao serviço.*conexão/i,
-    )
-    assert.equal(
-      authErrorMessage({ status: 500, message: 'Edge Function returned a 500' }),
-      'Não foi possível concluir a solicitação. Tente novamente mais tarde.',
-    )
-  })
-  for (const invalid of [
-    { name: '   ' },
-    { email: 'invalid' },
-    { email: '' },
-    { phone: '123' },
-    { phone: 'abc11999998888' },
-    { phone: '+1234567890123456' },
-  ])
+  assert.deepEqual(normalizeProfile(profile), { name: 'Ana Silva', email: 'ana@example.com' })
+  for (const invalid of [{ name: '   ' }, { email: 'invalid' }, { email: '' }])
     assert.ok(validateProfile({ ...profile, ...invalid }))
-  assert.equal(validateProfile({ ...profile, phone: '' }), null)
   assert.equal(validateProfile({ ...profile, email: '' }, false), null)
-  assert.equal(formatPhone('11999998888'), '(11) 99999-8888')
-  assert.equal(formatPhone('+551133334444'), '+55 (11) 3333-4444')
+})
+
+test('distinguishes network errors from service errors', () => {
+  assert.match(authErrorMessage(new TypeError('Failed to fetch')), /conectar ao serviço.*conexão/i)
+  assert.equal(
+    authErrorMessage({ status: 500, message: 'Edge Function returned a 500' }),
+    'Não foi possível concluir a solicitação. Tente novamente mais tarde.',
+  )
+})
+
+test('explains an expired or already used e-mail link (RF-03)', () => {
+  const expired =
+    'http://localhost:5173/user#error=access_denied&error_code=otp_expired&error_description=Email+link+is+invalid+or+has+expired'
+  assert.deepEqual(readAuthRedirect(expired), {
+    kind: 'error',
+    message: authErrorMessage({ error_code: 'otp_expired' }),
+  })
+  assert.match(authErrorMessage({ error_code: 'otp_expired' }), /link expirou ou já foi usado/)
+  // PKCE flow: the error comes in the query string.
+  assert.equal(
+    readAuthRedirect('http://localhost:5173/user?error=access_denied&error_code=otp_expired')?.kind,
+    'error',
+  )
+})
+
+test('confirms the e-mail after a sign-up link and ignores other URLs', () => {
+  assert.deepEqual(
+    readAuthRedirect('http://localhost:5173/user#access_token=x&refresh_token=y&type=signup'),
+    { kind: 'success', message: 'Seu e-mail foi confirmado.' },
+  )
+  assert.equal(
+    readAuthRedirect('http://localhost:5173/user#access_token=x&refresh_token=y&type=recovery'),
+    null,
+  )
+  assert.equal(readAuthRedirect('http://localhost:5173/user'), null)
 })
 
 test('account lifecycle persists edits, handles pending email and preserves data after a failed save', async () => {
