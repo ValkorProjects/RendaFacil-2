@@ -14,14 +14,8 @@ const server = await createServer({
     'import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY': JSON.stringify('test-publishable-key'),
   },
 })
-const {
-  readProfile,
-  normalizeProfile,
-  validateProfile,
-  formatPhone,
-  validatePasswordChange,
-  authErrorMessage,
-} = await server.ssrLoadModule('/src/utils/profile.ts')
+const { readProfile, normalizeProfile, validateProfile, validatePasswordChange, authErrorMessage } =
+  await server.ssrLoadModule('/src/utils/profile.ts')
 const originalFetch = globalThis.fetch
 const originalWindow = globalThis.window
 const requests = []
@@ -32,7 +26,6 @@ let fixtureUser = {
   aud: 'authenticated',
   role: 'authenticated',
   email: 'ana@example.com',
-  phone: '',
   app_metadata: { provider: 'email', providers: ['email'] },
   user_metadata: { full_name: 'Ana Silva' },
   created_at: '2026-01-01T00:00:00Z',
@@ -101,64 +94,40 @@ after(async () => {
   await server.close()
 })
 
-test('reads existing names and phones without treating a missing phone as an error', () => {
-  assert.deepEqual(readProfile(null), { name: '', email: '', phone: '' })
-  assert.deepEqual(
-    readProfile({
-      email: 'ana@example.com',
-      user_metadata: { name: 'Ana', phone_number: '11999998888' },
-    }),
-    { name: 'Ana', email: 'ana@example.com', phone: '11999998888' },
-  )
-  assert.equal(readProfile({ phone: '+5511999998888', user_metadata: { phone: '' } }).phone, '')
-  assert.equal(readProfile({ user_metadata: { full_name: 123, phone: {} } }).name, '')
+test('reads existing names without failing on missing or malformed metadata', () => {
+  assert.deepEqual(readProfile(null), { name: '', email: '' })
+  assert.deepEqual(readProfile({ email: 'ana@example.com', user_metadata: { name: 'Ana' } }), {
+    name: 'Ana',
+    email: 'ana@example.com',
+  })
+  assert.equal(readProfile({ user_metadata: { full_name: 123 } }).name, '')
 })
 
-test('validates names, emails and optional domestic or international phones', () => {
-  const profile = { name: ' Ana Silva ', email: ' ana@example.com ', phone: '+55 (11) 99999-8888' }
+test('validates names and emails', () => {
+  const profile = { name: ' Ana Silva ', email: ' ana@example.com ' }
   assert.equal(validateProfile(profile), null)
-  assert.deepEqual(normalizeProfile(profile), {
-    name: 'Ana Silva',
-    email: 'ana@example.com',
-    phone: '+5511999998888',
-  })
+  assert.deepEqual(normalizeProfile(profile), { name: 'Ana Silva', email: 'ana@example.com' })
 
-  test('distinguishes network errors from service errors', () => {
-    assert.match(
-      authErrorMessage(new TypeError('Failed to fetch')),
-      /conectar ao serviço.*conexão/i,
-    )
-    assert.equal(
-      authErrorMessage({ status: 500, message: 'Edge Function returned a 500' }),
-      'Não foi possível concluir a solicitação. Tente novamente mais tarde.',
-    )
-  })
-  for (const invalid of [
-    { name: '   ' },
-    { email: 'invalid' },
-    { email: '' },
-    { phone: '123' },
-    { phone: 'abc11999998888' },
-    { phone: '+1234567890123456' },
-  ])
+  for (const invalid of [{ name: '   ' }, { email: 'invalid' }, { email: '' }])
     assert.ok(validateProfile({ ...profile, ...invalid }))
-  assert.equal(validateProfile({ ...profile, phone: '' }), null)
   assert.equal(validateProfile({ ...profile, email: '' }, false), null)
-  assert.equal(formatPhone('11999998888'), '(11) 99999-8888')
-  assert.equal(formatPhone('+551133334444'), '+55 (11) 3333-4444')
+})
+
+test('distinguishes network errors from service errors', () => {
+  assert.match(authErrorMessage(new TypeError('Failed to fetch')), /conectar ao serviço.*conexão/i)
+  assert.equal(
+    authErrorMessage({ status: 500, message: 'Edge Function returned a 500' }),
+    'Não foi possível concluir a solicitação. Tente novamente mais tarde.',
+  )
 })
 
 test('account lifecycle persists edits, handles pending email and preserves data after a failed save', async () => {
   await getSupabase().auth.getSession()
   assert.equal(auth.ready, true)
   assert.equal(auth.isGuest, true)
-  await assert.rejects(auth.updateProfile({ name: 'Ana', email: 'ana@example.com', phone: '' }))
+  await assert.rejects(auth.updateProfile({ name: 'Ana', email: 'ana@example.com' }))
 
-  const signup = await auth.signUp(
-    { name: 'Ana', email: 'ana@example.com', phone: '' },
-    'test-password',
-    true,
-  )
+  const signup = await auth.signUp({ name: 'Ana', email: 'ana@example.com' }, 'test-password', true)
   assert.equal(signup.needsConfirmation, true)
   assert.equal(auth.isGuest, true, 'Signup without confirmation must not sign in')
   assert.equal(
@@ -171,15 +140,8 @@ test('account lifecycle persists edits, handles pending email and preserves data
   await auth.updateProfile({
     name: 'Ana Souza',
     email: 'ana@example.com',
-    phone: '(11) 99999-8888',
   })
   assert.equal(auth.user.user_metadata.full_name, 'Ana Souza')
-  assert.equal(auth.user.user_metadata.phone, undefined)
-  assert.equal(
-    requests.at(-1).body.phone,
-    undefined,
-    'Contact edits must not change SMS credentials',
-  )
   assert.equal(
     requests.at(-1).body.email,
     undefined,
@@ -189,25 +151,21 @@ test('account lifecycle persists edits, handles pending email and preserves data
   const pending = await auth.updateProfile({
     name: 'Ana Souza',
     email: 'novo@example.com',
-    phone: '',
   })
   assert.equal(pending.emailConfirmationPending, true)
   assert.equal(auth.user.email, 'ana@example.com', 'Keep the confirmed email until verification')
   assert.equal(auth.user.new_email, 'novo@example.com')
-  assert.equal(auth.user.user_metadata.phone, undefined)
 
-  await auth.updateProfile({ name: 'Ana Souza', email: 'novo@example.com', phone: '' })
+  await auth.updateProfile({ name: 'Ana Souza', email: 'novo@example.com' })
   assert.equal(requests.at(-1).body.email, undefined, 'Do not resend an already pending change')
   failUpdate = true
-  await assert.rejects(
-    auth.updateProfile({ name: 'Unsaved', email: 'novo@example.com', phone: '' }),
-  )
+  await assert.rejects(auth.updateProfile({ name: 'Unsaved', email: 'novo@example.com' }))
   assert.equal(auth.user.user_metadata.full_name, 'Ana Souza')
   failUpdate = false
 
   auth.session = { ...auth.session, user: { ...auth.user, is_anonymous: true } }
   assert.equal(auth.isGuest, true)
-  await assert.rejects(auth.updateProfile({ name: 'Ana', email: 'ana@example.com', phone: '' }))
+  await assert.rejects(auth.updateProfile({ name: 'Ana', email: 'ana@example.com' }))
   await auth.signOut()
   assert.equal(auth.isGuest, true)
   assert.equal(auth.user, null)
