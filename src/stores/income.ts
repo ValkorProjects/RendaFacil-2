@@ -352,6 +352,11 @@ export const useIncomeStore = defineStore('income', () => {
     draftEditingRegistrationId.value = null
   }
 
+  const clearAccountData = () => {
+    registrations.value = []
+    resetDraft()
+  }
+
   const saveDraft = () => {
     if (!canSaveDraft.value) return false
 
@@ -505,5 +510,6 @@ export const useIncomeStore = defineStore('income', () => {
     setDraftHasDependents,
     setDraftDependentCount,
     saveDraft,
+    clearAccountData,
   }
 })
