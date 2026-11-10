@@ -1,0 +1,45 @@
+# Runs the same checks as a local `npm run build` plus lint, format and unit tests on every
+# pull request and on pushes to the long-lived branches.
+name: CI
+
+on:
+  pull_request:
+    branches: [dev, main]
+  push:
+    branches: [dev, main]
+
+permissions:
+  contents: read
+
+# A new push to the same branch cancels the run that is still going.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: package.json # engines.node
+          cache: npm
+
+      - run: npm ci
+
+      # `npm run lint` uses --fix, which would hide problems here.
+      - name: Lint
+        run: npx eslint .
+
+      - name: Format
+        run: npx prettier --check src/
+
+      - name: Unit tests
+        run: npm test
+
+      # vue-tsc (app, tests and tooling configs) followed by the production build.
+      - name: Type-check and build
+        run: npm run build

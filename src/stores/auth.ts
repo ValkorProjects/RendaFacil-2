@@ -22,8 +22,7 @@ export const useAuthStore = defineStore('auth', () => {
   const user = computed(() => session.value?.user ?? null)
   const isGuest = computed(() => !user.value || Boolean(user.value.is_anonymous))
 
-  const profileRedirectUrl = () =>
-    new URL(`${import.meta.env.BASE_URL}user`, window.location.origin).href
+  const profileRedirectUrl = () => new URL(`${import.meta.env.BASE_URL}user`, window.location.origin).href
 
   // Fires once with the persisted session, then again on every sign-in/out.
   if (isSupabaseConfigured) {
