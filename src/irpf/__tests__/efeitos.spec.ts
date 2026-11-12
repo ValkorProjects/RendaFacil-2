@@ -283,6 +283,62 @@ describe('calcularEfeitos · barra de educação', () => {
   })
 })
 
+describe('calcularEfeitos · vários recibos de educação da mesma pessoa', () => {
+  const graduacao = (valor_centavos: number) =>
+    despesa({ categoria: 'educacao', tipo: 'graduacao', valor_centavos })
+
+  it('o que passa do limite cai nos últimos recibos e a soma fecha no excesso da pessoa', () => {
+    const dados: DadosDeclaracao = {
+      fontes: [fonte(7_800_000, 853_812, 298_104)],
+      dependentes: [],
+      despesas: [graduacao(300_000), graduacao(300_000)],
+    }
+    const { despesas, educacaoPorPessoa } = calcularEfeitos(dados)
+    const fora = despesas.map((item) => item.foraDoLimite)
+
+    expect(fora).toEqual([0, 243_850])
+    expect(fora.reduce((soma, parte) => soma + parte, 0)).toBe(600_000 - 356_150) // total − limite
+    expect(educacaoPorPessoa[0]).toMatchObject({ total: 600_000, uso: 356_150, restante: 0 })
+    expect(despesas[1]?.mensagens).toContain(
+      'Deduz até o limite: R$ 2.438,50 deste valor não conta',
+    )
+  })
+
+  it('recibo que não deduz não consome o limite', () => {
+    const idiomas = despesa({
+      categoria: 'educacao',
+      tipo: 'curso_idiomas',
+      valor_centavos: 500_000,
+    })
+    const dados: DadosDeclaracao = {
+      fontes: [fonte(7_800_000, 853_812, 298_104)],
+      dependentes: [],
+      despesas: [idiomas, graduacao(300_000)],
+    }
+
+    expect(calcularEfeitos(dados).despesas.map((item) => item.foraDoLimite)).toEqual([0, 0])
+  })
+})
+
+describe('calcularEfeitos · empate entre os modelos', () => {
+  it('não diz que o simplificado é maior nem que faltam R$ 0,00', () => {
+    // 100.000,00 de rendimentos: o simplificado deduz 17.640,00, o mesmo que INSS 11.000,00 + consulta 6.640,00
+    const dados: DadosDeclaracao = {
+      fontes: [fonte(10_000_000, 1_100_000, 1_000_000)],
+      dependentes: [],
+      despesas: [despesa({ valor_centavos: 664_000 })],
+    }
+    const { despesas, resultado } = calcularEfeitos(dados)
+
+    expect(resultado.completo.deducoes).toBe(resultado.simplificado.deducoes)
+    expect(despesas[0]).toMatchObject({
+      situacao: 'simplificado_vence',
+      efeito: 0,
+      mensagens: ['Não muda o imposto agora: os dois modelos dão o mesmo imposto'],
+    })
+  })
+})
+
 describe('previaEfeito', () => {
   it('dá o mesmo efeito da despesa já salva (F5, faculdade)', () => {
     const semFaculdade = { ...F5, despesas: F5.despesas.filter((item) => item !== FACULDADE) }

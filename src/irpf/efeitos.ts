@@ -43,6 +43,8 @@ export interface UsoEducacao {
 
 export interface Efeitos {
   despesas: EfeitoDespesa[] // na mesma ordem de `dados.despesas`
+  // Saúde e educação juntas: compara com a declaração sem elas, mantendo a pensão (é a leitura que dá
+  // o 2.356,67 do F5, que é o F1 com a pensão). A pensão tem efeito próprio em `despesas`.
   efeitoTotal: number
   educacaoPorPessoa: UsoEducacao[]
   resultado: Resultado // com todas as despesas
@@ -88,16 +90,30 @@ const mensagemNaoDeduz = (despesa: RegistroDespesa, avaliacao: AvaliacaoDespesa)
   }
 }
 
-// Parte de uma despesa de educação que não conta: o valor menos o que ela acrescenta à dedução
-// da pessoa. É marginal, como o efeito: "se eu tirar este recibo, quanto a dedução cai?".
+// Parte de uma despesa de educação que não conta por causa do limite. Os recibos dedutíveis de uma
+// pessoa consomem o limite na ordem da lista: o que passa dele cai nos últimos recibos, e a soma das
+// partes que ficam de fora é igual ao excesso real da pessoa (total − limite).
 const foraDoLimiteEducacao = (
-  despesa: RegistroDespesa,
-  totalDaPessoa: number,
+  dados: DadosDeclaracao,
+  indice: number,
+  avaliacoes: readonly AvaliacaoDespesa[],
   limite: number,
 ): number => {
-  const acrescenta =
-    Math.min(limite, totalDaPessoa) - Math.min(limite, totalDaPessoa - despesa.valor_centavos)
-  return despesa.valor_centavos - acrescenta
+  const despesa = dados.despesas[indice]
+  if (!despesa) return 0
+  const pessoa = pessoaDaEducacao(despesa)
+  let usado = 0
+  dados.despesas.slice(0, indice).forEach((anterior, i) => {
+    if (
+      anterior.categoria === 'educacao' &&
+      avaliacoes[i]?.deduz &&
+      pessoaDaEducacao(anterior) === pessoa
+    ) {
+      usado += anterior.valor_centavos
+    }
+  })
+  const conta = Math.min(despesa.valor_centavos, Math.max(0, limite - usado))
+  return despesa.valor_centavos - conta
 }
 
 // Contexto calculado uma vez e reaproveitado para cada despesa.
@@ -158,7 +174,10 @@ const efeitoNoIndice = (
     principal = 'Seu imposto já está zerado'
   } else if (resultado.modelo === 'simplificado') {
     situacao = 'simplificado_vence'
-    principal = `Não muda o imposto agora: o desconto simplificado é maior. Faltam ${reais(resultado.faltaParaCompleto)} em deduções.`
+    principal =
+      resultado.faltaParaCompleto > 0
+        ? `Não muda o imposto agora: o desconto simplificado é maior. Faltam ${reais(resultado.faltaParaCompleto)} em deduções.`
+        : 'Não muda o imposto agora: os dois modelos dão o mesmo imposto'
   } else {
     situacao = 'sem_efeito'
     principal = 'Não muda o imposto agora'
@@ -166,11 +185,7 @@ const efeitoNoIndice = (
 
   const foraDoLimite =
     despesa.categoria === 'educacao'
-      ? foraDoLimiteEducacao(
-          despesa,
-          ctx.educacaoDedutivelPorPessoa.get(pessoaDaEducacao(despesa)) ?? 0,
-          P.limiteEducacaoPorPessoa,
-        )
+      ? foraDoLimiteEducacao(dados, indice, ctx.avaliacoes, P.limiteEducacaoPorPessoa)
       : 0
 
   const mensagens = [principal]
