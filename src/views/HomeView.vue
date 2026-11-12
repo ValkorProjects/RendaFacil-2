@@ -1,16 +1,21 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import AppIcon from '@/components/AppIcon.vue'
 import PageCard from '@/components/PageCard.vue'
 import { usePwaInstall } from '@/composables/usePwaInstall'
 import { useIncomeStore } from '@/stores/income'
 import { cents, formatCurrency } from '@/utils/currency'
+import { describeTaxResult } from '@/utils/taxResult'
 
 const { canInstall, install } = usePwaInstall()
 const router = useRouter()
 const incomeStore = useIncomeStore()
 const isIncomeSummaryOpen = ref(false)
+const estimateHeadline = computed(() => {
+  const estimate = incomeStore.taxEstimate
+  return estimate?.ok ? describeTaxResult(estimate.result.resultado) : null
+})
 
 const openIncomeRegistration = () => {
   router.push({ name: 'income' })
@@ -99,6 +104,15 @@ const features = [
             <span class="income-detail-label">{{ item.label }}</span>
             <strong>{{ formatCurrency(cents(item.amount)) }}</strong>
           </article>
+        </div>
+        <div v-if="estimateHeadline" class="income-summary-row income-summary-estimate">
+          <span>{{ estimateHeadline.label }}</span>
+          <strong v-if="estimateHeadline.amount">{{
+            formatCurrency(estimateHeadline.amount)
+          }}</strong>
+        </div>
+        <div v-else-if="incomeStore.taxEstimate" class="income-summary-row" role="status">
+          <span>Não foi possível calcular a estimativa</span>
         </div>
         <div class="income-summary-row">
           <span>Total tributável</span>
@@ -286,6 +300,17 @@ const features = [
   color: var(--color-text);
   font-size: 0.78rem;
   text-align: right;
+}
+
+.income-summary-estimate {
+  padding-bottom: 0.45rem;
+  border-bottom: 1px solid var(--glass-border);
+  color: var(--color-text);
+  font-weight: 700;
+}
+
+.income-summary-estimate strong {
+  color: var(--color-accent);
 }
 
 .summary-add-button {
