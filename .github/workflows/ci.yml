@@ -43,3 +43,47 @@ jobs:
       # vue-tsc (app, tests and tooling configs) followed by the production build.
       - name: Type-check and build
         run: npm run build
+
+  # RLS and privilege tests (RF-20): pgTAP against a database built from scratch by the
+  # migrations. Starting Postgres in Docker takes a while, so the steps only run when something
+  # under supabase/ changed; otherwise the job passes right away.
+  database:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Check for changes in supabase/
+        id: changes
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          if [ -z "$BASE" ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            echo "No base commit to compare; running the tests."
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          elif git diff --quiet "$BASE" HEAD -- supabase/; then
+            echo "Nothing changed in supabase/; skipping the database tests."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-node@v5
+        if: steps.changes.outputs.run == 'true'
+        with:
+          node-version-file: package.json # engines.node
+          cache: npm
+
+      # The Supabase CLI comes from devDependencies, so CI uses the same version as everyone.
+      - if: steps.changes.outputs.run == 'true'
+        run: npm ci
+
+      - name: Start Postgres and apply the migrations
+        if: steps.changes.outputs.run == 'true'
+        run: npx supabase db start
+
+      - name: Database tests
+        if: steps.changes.outputs.run == 'true'
+        run: npx supabase test db
