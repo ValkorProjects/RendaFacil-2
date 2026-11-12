@@ -11,7 +11,7 @@ begin;
 create extension if not exists pgtap with schema extensions;
 set local search_path = public, extensions;
 
-select plan(40);
+select plan(47);
 
 -- Fixtures, como postgres ---------------------------------------------------------------------
 
@@ -195,8 +195,8 @@ select lives_ok(
              'bbbbbbbb-0000-0000-0000-0000000000d2', 'bbbbbbbb-0000-0000-0000-0000000000e2', 'Estágio do filho de B', 100) $$,
   'controle: B liga uma fonte pagadora ao próprio dependente');
 select lives_ok(
-  $$ insert into public.despesas (user_id, declaracao_id, categoria, tipo, beneficiario, dependente_id, valor_centavos, data)
-     values ('bbbbbbbb-0000-0000-0000-000000000002', 'bbbbbbbb-0000-0000-0000-0000000000d2',
+  $$ insert into public.despesas (id, user_id, declaracao_id, categoria, tipo, beneficiario, dependente_id, valor_centavos, data)
+     values ('bbbbbbbb-0000-0000-0000-0000000000c3', 'bbbbbbbb-0000-0000-0000-000000000002', 'bbbbbbbb-0000-0000-0000-0000000000d2',
              'saude', 'dentista', 'dependente', 'bbbbbbbb-0000-0000-0000-0000000000e2', 100, '2026-01-01') $$,
   'controle: B liga uma despesa ao próprio dependente');
 
@@ -210,6 +210,43 @@ select throws_ok(
   $$ update public.fontes_pagadoras set dependente_id = 'aaaaaaaa-0000-0000-0000-0000000000e1'
      where id = 'bbbbbbbb-0000-0000-0000-0000000000f3' $$,
   '42501', null, 'B não troca o dependente da própria fonte pelo dependente de A');
+
+-- B não muda as próprias despesas e dependentes para dentro da declaração de A ----------------
+
+select throws_ok(
+  $$ update public.despesas set declaracao_id = 'aaaaaaaa-0000-0000-0000-0000000000d1'
+     where id = 'bbbbbbbb-0000-0000-0000-0000000000c3' $$,
+  '42501', null, 'B não move a própria despesa para a declaração de A');
+select throws_ok(
+  $$ update public.despesas set dependente_id = 'aaaaaaaa-0000-0000-0000-0000000000e1'
+     where id = 'bbbbbbbb-0000-0000-0000-0000000000c3' $$,
+  '42501', null, 'B não troca o dependente da própria despesa pelo dependente de A');
+select throws_ok(
+  $$ update public.dependentes set declaracao_id = 'aaaaaaaa-0000-0000-0000-0000000000d1'
+     where id = 'bbbbbbbb-0000-0000-0000-0000000000e2' $$,
+  '42501', null, 'B não move o próprio dependente para a declaração de A');
+
+-- B com duas declarações: o dependente de uma não entra nas linhas da outra --------------------
+
+select lives_ok(
+  $$ insert into public.declaracoes (id, user_id, ano_calendario)
+     values ('bbbbbbbb-0000-0000-0000-0000000000d4', 'bbbbbbbb-0000-0000-0000-000000000002', 2027) $$,
+  'controle: B cria a própria declaração de 2027');
+select lives_ok(
+  $$ insert into public.dependentes (id, user_id, declaracao_id, apelido, relacao)
+     values ('bbbbbbbb-0000-0000-0000-0000000000e4', 'bbbbbbbb-0000-0000-0000-000000000002',
+             'bbbbbbbb-0000-0000-0000-0000000000d4', 'Filho de B em 2027', 'filho_enteado') $$,
+  'controle: B cria um dependente na declaração de 2027');
+select throws_ok(
+  $$ insert into public.fontes_pagadoras (user_id, declaracao_id, dependente_id, nome, rendimentos_centavos)
+     values ('bbbbbbbb-0000-0000-0000-000000000002', 'bbbbbbbb-0000-0000-0000-0000000000d2',
+             'bbbbbbbb-0000-0000-0000-0000000000e4', 'fonte de 2026 no dependente de 2027', 100) $$,
+  '42501', null, 'B não liga uma fonte de 2026 a um dependente da declaração de 2027');
+select throws_ok(
+  $$ insert into public.despesas (user_id, declaracao_id, categoria, tipo, beneficiario, dependente_id, valor_centavos, data)
+     values ('bbbbbbbb-0000-0000-0000-000000000002', 'bbbbbbbb-0000-0000-0000-0000000000d2',
+             'saude', 'dentista', 'dependente', 'bbbbbbbb-0000-0000-0000-0000000000e4', 100, '2026-01-01') $$,
+  '42501', null, 'B não liga uma despesa de 2026 a um dependente da declaração de 2027');
 
 -- Controle: B altera e apaga as próprias linhas ------------------------------------------------
 
