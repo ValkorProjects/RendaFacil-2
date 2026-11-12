@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
-import { RouterLink } from 'vue-router'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 import AppIcon from '@/components/AppIcon.vue'
 import PageCard from '@/components/PageCard.vue'
 import { isSupabaseConfigured } from '@/lib/supabase'
@@ -26,7 +26,8 @@ const dependents = computed(() =>
     })),
   ),
 )
-const { user, ready, isGuest, initializationError, recoveryPending } = storeToRefs(auth)
+const { user, ready, isGuest, initializationError, recoveryPending, redirectNotice } =
+  storeToRefs(auth)
 const profile = computed(() => readProfile(user.value))
 const displayName = computed(() => profile.value.name || 'Minha conta')
 const initials = computed(() =>
@@ -201,6 +202,30 @@ watch(
     consentAccepted.value = false
     clearMessages()
   },
+)
+
+// Show the result of an e-mail link once: an expired link, or a just-confirmed e-mail.
+// The error is removed through the router, after its first navigation, so a reload does not
+// show the message again.
+const route = useRoute()
+const router = useRouter()
+const LINK_ERROR_PARAMS = ['error', 'error_code', 'error_description']
+watch(
+  redirectNotice,
+  async (notice) => {
+    if (!notice) return
+    if (notice.kind === 'error') errorMessage.value = notice.message
+    else successMessage.value = notice.message
+    auth.clearRedirectNotice()
+    if (notice.kind === 'error') {
+      await router.isReady()
+      const query = Object.fromEntries(
+        Object.entries(route.query).filter(([key]) => !LINK_ERROR_PARAMS.includes(key)),
+      )
+      await router.replace({ path: route.path, query, hash: '' })
+    }
+  },
+  { immediate: true },
 )
 
 watch(
@@ -584,96 +609,98 @@ async function signOut() {
               </button>
             </div>
 
-            <form novalidate @submit.prevent="submitAccess">
-              <fieldset :disabled="busy" class="fields">
-                <legend class="sr-only">
-                  {{
-                    accessMode === 'signin'
-                      ? 'Entrar na conta'
-                      : accessMode === 'signup'
-                        ? 'Cadastro'
-                        : 'Recuperação de senha'
-                  }}
-                </legend>
-                <label v-if="accessMode === 'signup'" class="field" for="access-name">
-                  Nome
-                  <input
-                    id="access-name"
-                    v-model="access.name"
-                    name="name"
-                    autocomplete="name"
-                    maxlength="100"
-                    required
-                  />
-                </label>
-                <label class="field" for="access-email">
-                  E-mail
-                  <input
-                    id="access-email"
-                    v-model="access.email"
-                    name="email"
-                    type="email"
-                    autocomplete="email"
-                    maxlength="254"
-                    placeholder="voce@exemplo.com"
-                    required
-                  />
-                </label>
-                <label v-if="accessMode !== 'forgot'" class="field" for="access-password">
-                  Senha
-                  <input
-                    id="access-password"
-                    v-model="access.password"
-                    name="password"
-                    type="password"
-                    :autocomplete="accessMode === 'signin' ? 'current-password' : 'new-password'"
-                    :minlength="accessMode === 'signup' ? 8 : undefined"
-                    :aria-describedby="accessMode === 'signup' ? 'password-help' : undefined"
-                    required
-                  />
-                </label>
-                <label
-                  v-if="accessMode === 'signup'"
-                  class="field"
-                  for="access-password-confirmation"
-                >
-                  Confirmar senha
-                  <input
-                    id="access-password-confirmation"
-                    v-model="access.confirmation"
-                    type="password"
-                    autocomplete="new-password"
-                    minlength="8"
-                    required
-                  />
-                </label>
-                <p v-if="accessMode === 'signup'" id="password-help" class="field-help">
-                  Use pelo menos 8 caracteres.
-                </p>
-                <label v-if="accessMode === 'signup'" class="consent-field">
-                  <input v-model="consentAccepted" type="checkbox" required />
-                  <span>
-                    Li a
-                    <RouterLink :to="{ name: 'privacy' }" target="_blank">
-                      política de privacidade
-                    </RouterLink>
-                    e autorizo o uso dos meus dados, inclusive despesas de saúde, para calcular a
-                    estimativa do meu Imposto de Renda.
-                  </span>
-                </label>
-                <button type="submit" class="button access-submit">
-                  {{
-                    busy
-                      ? 'Aguarde…'
-                      : accessMode === 'signin'
+            <Transition name="access-form" mode="out-in">
+              <form :key="accessMode" novalidate @submit.prevent="submitAccess">
+                <fieldset :disabled="busy" class="fields">
+                  <legend class="sr-only">
+                    {{
+                      accessMode === 'signin'
                         ? 'Entrar na conta'
                         : accessMode === 'signup'
-                          ? 'Criar minha conta'
-                          : 'Enviar link de recuperação'
-                  }}
-                </button>
-              </fieldset>
-            </form>
+                          ? 'Cadastro'
+                          : 'Recuperação de senha'
+                    }}
+                  </legend>
+                  <label v-if="accessMode === 'signup'" class="field" for="access-name">
+                    Nome
+                    <input
+                      id="access-name"
+                      v-model="access.name"
+                      name="name"
+                      autocomplete="name"
+                      maxlength="100"
+                      required
+                    />
+                  </label>
+                  <label class="field" for="access-email">
+                    E-mail
+                    <input
+                      id="access-email"
+                      v-model="access.email"
+                      name="email"
+                      type="email"
+                      autocomplete="email"
+                      maxlength="254"
+                      placeholder="voce@exemplo.com"
+                      required
+                    />
+                  </label>
+                  <label v-if="accessMode !== 'forgot'" class="field" for="access-password">
+                    Senha
+                    <input
+                      id="access-password"
+                      v-model="access.password"
+                      name="password"
+                      type="password"
+                      :autocomplete="accessMode === 'signin' ? 'current-password' : 'new-password'"
+                      :minlength="accessMode === 'signup' ? 8 : undefined"
+                      :aria-describedby="accessMode === 'signup' ? 'password-help' : undefined"
+                      required
+                    />
+                  </label>
+                  <label
+                    v-if="accessMode === 'signup'"
+                    class="field"
+                    for="access-password-confirmation"
+                  >
+                    Confirmar senha
+                    <input
+                      id="access-password-confirmation"
+                      v-model="access.confirmation"
+                      type="password"
+                      autocomplete="new-password"
+                      minlength="8"
+                      required
+                    />
+                  </label>
+                  <p v-if="accessMode === 'signup'" id="password-help" class="field-help">
+                    Use pelo menos 8 caracteres.
+                  </p>
+                  <label v-if="accessMode === 'signup'" class="consent-field">
+                    <input v-model="consentAccepted" type="checkbox" required />
+                    <span>
+                      Li a
+                      <RouterLink :to="{ name: 'privacy' }" target="_blank">
+                        política de privacidade
+                      </RouterLink>
+                      e autorizo o uso dos meus dados, inclusive despesas de saúde, para calcular a
+                      estimativa do meu Imposto de Renda.
+                    </span>
+                  </label>
+                  <button type="submit" class="button access-submit">
+                    {{
+                      busy
+                        ? 'Aguarde…'
+                        : accessMode === 'signin'
+                          ? 'Entrar na conta'
+                          : accessMode === 'signup'
+                            ? 'Criar minha conta'
+                            : 'Enviar link de recuperação'
+                    }}
+                  </button>
+                </fieldset>
+              </form>
+            </Transition>
             <div v-if="accessMode === 'signin'" class="access-links">
               <button
                 type="button"
@@ -1126,6 +1153,36 @@ async function signOut() {
 .access-submit {
   width: 100%;
   margin-top: 0.25rem;
+}
+
+/* Troca entre entrar, criar conta e recuperar senha (RF-03). */
+.access-form-enter-active,
+.access-form-leave-active {
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease;
+}
+
+.access-form-enter-from {
+  opacity: 0;
+  transform: translateX(0.75rem);
+}
+
+.access-form-leave-to {
+  opacity: 0;
+  transform: translateX(-0.75rem);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .access-form-enter-active,
+  .access-form-leave-active {
+    transition: none;
+  }
+
+  .access-form-enter-from,
+  .access-form-leave-to {
+    transform: none;
+  }
 }
 
 .notice {
