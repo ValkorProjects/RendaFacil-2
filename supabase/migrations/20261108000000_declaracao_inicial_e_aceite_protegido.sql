@@ -18,6 +18,10 @@ drop trigger if exists on_auth_user_created_declaracao on auth.users;
 create trigger on_auth_user_created_declaracao
   after insert on auth.users
   for each row execute procedure public.handle_new_user_declaracao();
+  -- Contas criadas antes deste trigger não têm a declaração de 2026; o trigger só cobre cadastros novos.
+  insert into public.declaracoes (user_id, ano_calendario)
+  select id, 2026 from auth.users
+  on conflict (user_id, ano_calendario) do nothing;
 
 revoke execute on function public.handle_new_user_declaracao() from public, anon, authenticated;
 
