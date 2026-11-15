@@ -16,6 +16,7 @@ A primeira versão estima a **declaração de 2027, com a renda de 2026**, para 
 - [Motor de cálculo](#motor-de-cálculo)
 - [Supabase](#supabase)
 - [Progressive Web App](#progressive-web-app)
+- [Deploy](#deploy)
 - [Como contribuir](#como-contribuir)
 - [Problemas comuns](#problemas-comuns)
 
@@ -34,6 +35,8 @@ O RendaFacil quer responder, antes da declaração:
 
 ## O que o app faz
 
+Quando o MVP estiver completo, o fluxo terá quatro etapas. Elas descrevem o produto planejado, não quatro telas já concluídas. O que funciona hoje está em [Situação do projeto](#situação-do-projeto).
+
 1. **Questionário inicial:** coleta o básico (quantas empresas pagaram salário, dependentes, pensão, gastos com saúde e educação) e identifica situações que o app ainda não calcula, como aluguel recebido ou renda de autônomo.
 2. **Rendas:** a pessoa lança o informe de rendimentos de cada empresa ou, antes de ele chegar, estima pelo salário mensal.
 3. **Dependentes e dedutíveis:** cadastro de dependentes e de despesas de saúde, educação e pensão alimentícia, avisando quando uma despesa não deduz e por quê.
@@ -47,13 +50,14 @@ O resultado é uma **estimativa**. O que vale é a declaração entregue à Rece
 
 Em desenvolvimento, rumo ao MVP. As funcionalidades estão organizadas em issues com o prefixo `RF-` no [GitHub](https://github.com/ValkorProjects/RendaFacil-2/issues).
 
-| Pronto                                                                                       | Em andamento ou planejado                                          |
-| -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| Motor de cálculo do ajuste anual e da folha mensal, com testes de casos de referência        | Cadastro, login e recuperação de senha                             |
-| Parâmetros fiscais de 2026                                                                   | Questionário inicial com triagem                                   |
-| Banco de dados no Supabase com ano-calendário e RLS (migrations em [`supabase/`](supabase/)) | Telas de Rendas, Dependentes e Dedutíveis na versão final          |
-| Tela de Rendas com estimativa do imposto (dados ainda só em memória)                         | Home com o resultado e o detalhe do cálculo                        |
-| Documentação do cálculo                                                                      | Consentimento, privacidade, exclusão de conta e deploy de produção |
+| Pronto                                                                                | Em andamento ou planejado                                    |
+| ------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| Motor de cálculo do ajuste anual e da folha mensal, com testes de casos de referência | Questionário inicial com triagem                             |
+| Parâmetros fiscais de 2026                                                            | Persistência das rendas e dos dependentes no Supabase        |
+| Estrutura do banco e políticas RLS definidas em [`supabase/`](supabase/)              | Telas finais de Rendas, Dependentes e Dedutíveis             |
+| Tela de Rendas com estimativa do imposto (dados ainda só em memória)                  | Home com o resultado e o detalhe do cálculo                  |
+| Cadastro, login, perfil, consentimento e política de privacidade                      | Publicação da Edge Function de exclusão e deploy de produção |
+| Documentação do cálculo                                                               |                                                              |
 
 Fora do escopo do MVP: aluguel recebido, autônomo, MEI ou PJ (carnê-leão), aposentadoria, ganho de capital, bolsa de valores, renda do exterior e previdência privada. A lista completa está na [seção 9 da documentação do cálculo](docs/calculo-irpf-2026.md#9-fora-do-escopo-do-mvp).
 
@@ -93,10 +97,14 @@ cp .env.example .env
 
 | Variável                        | Obrigatória | Descrição                                   |
 | ------------------------------- | ----------- | ------------------------------------------- |
-| `VITE_SUPABASE_URL`             | Não\*       | URL do projeto no Supabase                  |
-| `VITE_SUPABASE_PUBLISHABLE_KEY` | Não\*       | Chave publicável (antiga `anon`) do projeto |
+| `VITE_SUPABASE_URL`             | Sim         | URL do projeto no Supabase                  |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | Sim         | Chave publicável (antiga `anon`) do projeto |
 
-\* O app roda sem elas, e a estimativa na tela de Rendas funciona. Elas só são necessárias para as partes que usam o banco e o login. Veja [Supabase](#supabase).
+Os valores de `.env.example` são exemplos, não credenciais válidas. Depois de copiar o arquivo,
+substitua-os pelos valores do seu projeto Supabase. Se qualquer uma das variáveis estiver faltando,
+o perfil informa que o acesso e o cadastro estão indisponíveis e as telas privadas não podem ser
+acessadas. Veja
+[Supabase](#supabase).
 
 Reinicie o servidor depois de alterar o `.env`.
 
@@ -118,17 +126,17 @@ Depois, abra no celular o endereço "Network" que o Vite mostra. Por `http://192
 
 ## Scripts
 
-| Comando                       | O que faz                                                            |
-| ----------------------------- | -------------------------------------------------------------------- |
-| `npm run dev`                 | Sobe o servidor de desenvolvimento e abre o navegador                |
-| `npm run build`               | Confere os tipos e gera a versão de produção em `dist/`              |
-| `npm run preview`             | Serve a versão de produção localmente                                |
-| `npm run type-check`          | Confere os tipos com `vue-tsc`                                       |
-| `npm test`                    | Roda os testes uma vez: Vitest e os testes de conta em `tests/`      |
-| `npm run test:watch`          | Roda os testes e repete a cada alteração                             |
-| `npm run lint`                | Roda o ESLint e corrige o que for automático                         |
-| `npm run format`              | Formata `src/` com Prettier                                          |
-| `npm run generate-pwa-assets` | Gera de novo os ícones em `public/` a partir de `public/favicon.svg` |
+| Comando                       | O que faz                                                                |
+| ----------------------------- | ------------------------------------------------------------------------ |
+| `npm run dev`                 | Sobe o servidor de desenvolvimento e abre o navegador                    |
+| `npm run build`               | Confere os tipos e gera a versão de produção em `dist/`                  |
+| `npm run preview`             | Serve a versão de produção localmente                                    |
+| `npm run type-check`          | Confere os tipos com `vue-tsc`                                           |
+| `npm test`                    | Roda o Vitest e os testes de perfil e ciclo de vida da conta em `tests/` |
+| `npm run test:watch`          | Roda os testes e repete a cada alteração                                 |
+| `npm run lint`                | Roda o ESLint e corrige o que for automático                             |
+| `npm run format`              | Formata `src/` com Prettier                                              |
+| `npm run generate-pwa-assets` | Gera de novo os ícones em `public/` a partir de `public/favicon.svg`     |
 
 Todo pull request para `dev` ou `main` roda no GitHub Actions o ESLint, a checagem do Prettier, os testes, a checagem de tipos e o build ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)). Rode as mesmas checagens antes de enviar:
 
@@ -204,19 +212,23 @@ As fórmulas, a tabela de parâmetros com as fontes oficiais, as regras de arred
 
 ## Supabase
 
-O banco guarda uma declaração por usuário e por ano-calendário, com as tabelas `perfis`, `declaracoes`, `fontes_pagadoras`, `dependentes` e `despesas`. Todas têm RLS (Row Level Security): cada usuário autenticado só lê e altera os próprios dados. A estrutura está nas migrations em [`supabase/migrations/`](supabase/migrations/).
+As migrations em [`supabase/migrations/`](supabase/migrations/) definem as tabelas `perfis`,
+`declaracoes`, `fontes_pagadoras`, `dependentes` e `despesas`, com políticas RLS (Row Level Security)
+para restringir o acesso aos dados do usuário autenticado. A tela de Rendas ainda mantém rendimentos
+e dependentes apenas em memória; a persistência deles no Supabase ainda está planejada.
 
 ### Conectar um projeto
 
-1. No [painel do Supabase](https://supabase.com/dashboard), abra **Project Settings → API** e copie a **Project URL** e a chave **publishable** (em projetos antigos, `anon`).
-2. Cole no `.env`:
+1. Crie um projeto no [painel do Supabase](https://supabase.com/dashboard). Em **Project Settings → API**, copie a **Project URL** e a chave **publishable** (em projetos antigos, `anon`).
+2. Substitua os valores de exemplo no `.env`:
 
    ```dotenv
    VITE_SUPABASE_URL=https://seu-projeto.supabase.co
    VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
    ```
 
-3. Reinicie o servidor. A tela de usuário passa a mostrar que o Supabase está configurado.
+3. Em **Authentication → URL Configuration**, defina a Site URL e permita o redirecionamento para o perfil (`http://localhost:5173/user` no desenvolvimento e a URL `/user` do app publicado). Se o app estiver em um subdiretório, inclua o caminho base.
+4. Ative o provedor de e-mail e configure os e-mails de confirmação. Reinicie o servidor: o **Perfil** passa a oferecer **Entrar** e **Criar conta**. Sem uma sessão ativa, as telas privadas ficam inacessíveis; a política de privacidade continua pública.
 
 > **Segurança:** toda variável `VITE_` vai junto com o código para o navegador. Só a chave publicável pode ficar aqui, nunca uma chave `secret` ou `service_role`. Os dados ficam protegidos pelas políticas de RLS de cada tabela.
 
@@ -230,7 +242,25 @@ const { data, error } = await getSupabase().from('declaracoes').select()
 
 `getSupabase()` devolve um cliente único, criado na primeira chamada. Se as variáveis estiverem faltando, ele lança um erro explicando o que fazer. Para código que precisa funcionar sem o Supabase, confira antes `isSupabaseConfigured`, do mesmo arquivo.
 
-[`src/stores/auth.ts`](src/stores/auth.ts) acompanha a sessão e expõe `session` e `user`, além de `signIn`, `signUp` e `signOut`.
+[`src/stores/auth.ts`](src/stores/auth.ts) acompanha a sessão e expõe `session`, `user`, `ready`,
+`initializationError` e `isGuest`. As ações incluem entrar, criar conta, atualizar perfil e e-mail,
+alterar e recuperar senha, reenviar confirmação de cadastro, sair e excluir a conta. O cadastro exige
+aceite da política de privacidade; a versão e a data do aceite são gravadas em `perfis` pelo trigger.
+
+### Exclusão de conta
+
+A exclusão depende da Edge Function
+[`delete-account`](supabase/functions/delete-account/index.ts), que precisa ser publicada no mesmo
+projeto Supabase usado pelo app:
+
+```bash
+npx supabase functions deploy delete-account --project-ref SEU_PROJECT_REF --no-verify-jwt
+```
+
+A função valida a sessão com `auth.getUser`, recusa usuários anônimos, encerra as sessões e exclui
+somente a conta autenticada. O Supabase fornece `SUPABASE_SERVICE_ROLE_KEY` ao ambiente da função;
+nunca coloque essa chave em variáveis `VITE_` ou no frontend. Até a função ser publicada, a exclusão
+da conta mostra um erro e não informa sucesso.
 
 ### Tipos do banco
 
@@ -282,6 +312,21 @@ npm run preview
 
 A cor de fundo dos ícones da tela inicial fica em `pwa-assets.config.ts`.
 
+## Deploy
+
+`npm run build` gera o site estático em `dist/`, que pode ser servido por uma hospedagem estática.
+Para produção:
+
+- **HTTPS** é necessário para o service worker e a instalação do app.
+- **Fallback da SPA:** como o roteador usa URLs limpas (por exemplo, `/income`), a hospedagem precisa
+  servir `index.html` para caminhos desconhecidos.
+- **Variáveis de ambiente:** configure `VITE_SUPABASE_URL` e `VITE_SUPABASE_PUBLISHABLE_KEY` nas
+  configurações de build da hospedagem. O Vite as incorpora ao app durante o build; alterar os valores
+  exige gerar e publicar um novo build.
+
+O processo de deploy de produção, incluindo hospedagem, URL e release, está sendo acompanhado na
+[issue #20 (RF-19)](https://github.com/ValkorProjects/RendaFacil-2/issues/20).
+
 ## Como contribuir
 
 1. Escolha uma issue e crie uma branch a partir da `dev`, com prefixo pelo tipo: `feature/`, `fix/` ou `docs/`.
@@ -300,8 +345,9 @@ A cor de fundo dos ícones da tela inicial fica em `pwa-assets.config.ts`.
 
 2. Faça commits pequenos, com mensagens em português que digam o que mudou.
 3. Rode as checagens da seção [Scripts](#scripts) antes de enviar.
-4. Abra o pull request para a `dev`, citando a issue. A `main` recebe a `dev` quando uma versão está pronta.
-5. Mudança no cálculo precisa de caso de teste e, se mudar uma regra, de atualização em [`docs/calculo-irpf-2026.md`](docs/calculo-irpf-2026.md).
+4. Abra o pull request para a `dev` e referencie a issue com `Refs #N` (não use `Closes #N`, pois esse PR é integrado primeiro à `dev`). A `main` recebe a `dev` quando uma versão está pronta.
+5. Depois do merge e de confirmar os critérios de aceite, feche a issue manualmente.
+6. Mudança no cálculo precisa de caso de teste e, se mudar uma regra, de atualização em [`docs/calculo-irpf-2026.md`](docs/calculo-irpf-2026.md).
 
 ## Problemas comuns
 
@@ -309,4 +355,8 @@ A cor de fundo dos ícones da tela inicial fica em `pwa-assets.config.ts`.
 
 **A opção de instalar não aparece.** Confira se a página está em HTTPS ou em `localhost`, se o app já não está instalado e se não é uma janela anônima.
 
-**Erro `Supabase is not configured`.** Falta uma das duas variáveis no `.env`, ou o servidor não foi reiniciado depois da alteração.
+**Acesso e cadastro de contas estão indisponíveis.** O perfil mostra esse aviso quando falta uma das
+variáveis do Supabase. Configure `VITE_SUPABASE_URL` e `VITE_SUPABASE_PUBLISHABLE_KEY` com os valores
+do seu projeto no `.env` e reinicie o servidor. Se os valores de exemplo ou credenciais inválidas
+estiverem preenchidos, o formulário pode aparecer, mas a autenticação não funcionará. Sem uma sessão,
+as telas privadas ficam inacessíveis; a política de privacidade continua pública.
