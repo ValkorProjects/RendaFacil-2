@@ -25,18 +25,22 @@ Sections marked **TODO** are documentation placeholders — fill them in as the 
 
 ## Overview
 
-> **TODO:** describe the problem the app solves, its main users, and the current status of the project (prototype, beta, production).
+RendaFacil is an app in development to help people estimate their annual income tax from income, dependents and deductible expenses.
+
+### Project status
+
+The project is under active development. The income registration screen already uses the tax calculation engine, but its data is kept only in memory for the current session. The initial questionnaire, final dependents and deductible-expenses screens, and final results screen are not yet complete.
 
 ## Features
 
-What the template ships with today:
+The planned MVP flow has four stages. These describe the target experience, not four completed screens:
 
-- Four sample pages (Home, User, Settings, Info) behind a glass-style bottom navigation island
-- Responsive layout for phone and desktop, with light and dark themes that follow the system setting
-- Installable as a PWA, with offline caching of the app shell
-- Supabase client, typed schema placeholder and an auth store, inactive until credentials are added
+1. **Initial questionnaire:** collect basic information (such as employers, dependents, pension and health or education expenses) and identify income types the app does not yet calculate, such as rent or self-employment.
+2. **Income:** enter income statements from each employer, or estimate income from monthly salary.
+3. **Dependents and deductions:** register dependents and health, education and alimony expenses, with explanations when an expense is not deductible.
+4. **Results:** show the estimated refund or tax due, the recommended tax model and a detailed calculation for both models.
 
-> **TODO:** replace this list with the product's real features.
+See [Project status](#project-status) for what is currently implemented.
 
 ## Tech stack
 
@@ -78,7 +82,11 @@ cp .env.example .env
 | `VITE_SUPABASE_URL`             | Yes      | Supabase project URL               |
 | `VITE_SUPABASE_PUBLISHABLE_KEY` | Yes      | Supabase publishable (or anon) key |
 
-The app requires both variables to verify the user's session before allowing access. See [Supabase](#supabase).
+The values in `.env.example` are placeholders, not usable project credentials. After copying the file,
+replace both values with those from your Supabase project; otherwise, the app cannot authenticate
+users. Without both variables, the profile page shows an unavailable-access message instead of the
+login form, and private pages remain inaccessible. The app requires both variables to verify the
+user's session before allowing access to private pages. See [Supabase](#supabase).
 
 Restart the dev server after changing `.env`.
 
@@ -106,7 +114,7 @@ Then open the "Network" URL that Vite prints. Note that installing the PWA does 
 | `npm run build`               | Type-check, then build for production into `dist/`              |
 | `npm run preview`             | Serve the production build locally                              |
 | `npm run type-check`          | Type-check the project with `vue-tsc`                           |
-| `npm test`                    | Run the unit tests once with Vitest                             |
+| `npm test`                    | Run Vitest and the profile and account lifecycle tests in `tests/` |
 | `npm run test:watch`          | Run the unit tests and re-run them on every change              |
 | `npm run lint`                | Lint with ESLint and fix what can be fixed automatically        |
 | `npm run format`              | Format `src/` with Prettier                                     |
@@ -230,7 +238,7 @@ The app checks the persisted Supabase session before showing the main applicatio
    ```
 
 4. In **Authentication → URL Configuration**, set the Site URL and allow the profile redirect URL (`http://localhost:5173/user` for local development, plus the deployed app's `/user` URL). Include the base path if the app is hosted in a subdirectory.
-5. Enable the Email provider and configure confirmation emails. Restart the dev server; **Perfil** now offers **Entrar** and **Criar conta**.
+5. Enable the Email provider and configure confirmation emails. Restart the dev server; **Perfil** now offers **Entrar** and **Criar conta**. Without an active session, private pages remain inaccessible.
 
 > **Security:** every `VITE_` variable is bundled into the code sent to the browser. Only the publishable key belongs here — never a `secret` / `service_role` key. Protect your data with [Row Level Security](https://supabase.com/docs/guides/database/postgres/row-level-security) policies on every table.
 
@@ -246,7 +254,7 @@ const { data, error } = await getSupabase().from('your_table').select()
 
 ### Authentication
 
-[The auth store](src/stores/auth.ts) listens for auth changes and exposes `session`, `user`, `ready`, `initializationError` and `isGuest`, plus actions for sign-in, registration, profile updates and sign-out. Signed-out and anonymous Supabase users remain on the profile page until they authenticate.
+[The auth store](src/stores/auth.ts) listens for auth changes and exposes `session`, `user`, `ready`, `initializationError` and `isGuest`. Its actions support sign-in, registration, profile and email updates, password changes and recovery, resending signup confirmation, sign-out and account deletion. Signed-out and anonymous Supabase users remain on the profile page until they authenticate.
 
 [The profile page](src/views/UserView.vue) displays and edits the account name. Registration requires explicit acceptance of the privacy policy; the accepted version and timestamp are written by the trigger to `public.perfis`. Consent data is not used as an authorization claim.
 
@@ -339,7 +347,7 @@ The service worker caches the app's own files only. Requests to Supabase always 
 - **SPA fallback** — the router uses clean URLs (`/settings`, not `/#/settings`), so the host must serve `index.html` for unknown paths. Most hosts have a setting or a rewrite rule for this.
 - **Environment variables** — set `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` in the host's build settings; they are read at build time.
 
-> **TODO:** record the hosting provider, production URL, and the release process.
+The production deployment process, including the hosting provider, production URL and release workflow, is tracked in [issue #20 (RF-19)](https://github.com/ValkorProjects/RendaFacil-2/issues/20).
 
 ## Troubleshooting
 
@@ -347,11 +355,17 @@ The service worker caches the app's own files only. Requests to Supabase always 
 
 **No install option appears.** Check that the page is on HTTPS or `localhost`, that it isn't already installed, and that you're not in a private/incognito window.
 
-**`Supabase is not configured` error.** `.env` is missing one of the two variables, or the dev server wasn't restarted after editing it.
+**Access and account creation are unavailable.** The profile page shows this notice if either Supabase
+environment variable is missing or invalid. Set both `VITE_SUPABASE_URL` and
+`VITE_SUPABASE_PUBLISHABLE_KEY` in `.env` to the values from your project, then restart the dev
+server. Private pages remain inaccessible until you sign in; public pages such as the privacy policy
+remain available.
 
 ## Contributing
 
-> **TODO:** branching model, commit conventions, and review process. Run `npm run lint` and `npm run type-check` before opening a pull request.
+1. Open pull requests against `dev` and reference the related issue with `Refs #N`. The `main` branch receives `dev` when a release is ready.
+2. Close the issue only after the pull request has been merged and its acceptance criteria have been verified. If GitHub does not close it automatically, close it manually.
+3. Before opening a pull request, run `npm run lint` and `npm run type-check`.
 
 ## License
 
