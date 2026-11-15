@@ -182,7 +182,9 @@ npm run build
 │   └── main.ts                Ponto de entrada
 ├── supabase/
 │   ├── config.toml            Configuração do Supabase local
+│   ├── functions/             Edge Function delete-account (exclusão de conta)
 │   └── migrations/            Tabelas e políticas de acesso (RLS) do banco
+├── tests/                     Testes Node de perfil e exclusão de conta
 ├── .env.example               Modelo das variáveis de ambiente
 ├── vite.config.ts             Configuração do Vite e do PWA
 └── vitest.config.ts           Configuração dos testes
@@ -228,7 +230,7 @@ e dependentes apenas em memória; a persistência deles no Supabase ainda está 
    ```
 
 3. Em **Authentication → URL Configuration**, defina a Site URL e permita o redirecionamento para o perfil (`http://localhost:5173/user` no desenvolvimento e a URL `/user` do app publicado). Se o app estiver em um subdiretório, inclua o caminho base.
-4. Ative o provedor de e-mail e configure os e-mails de confirmação. Reinicie o servidor: o **Perfil** passa a oferecer **Entrar** e **Criar conta**. Sem uma sessão ativa, as telas privadas ficam inacessíveis; a política de privacidade continua pública.
+4. Ative o provedor de e-mail. Durante o desenvolvimento, a confirmação de e-mail fica desativada no projeto por causa do limite de envios do Supabase. O SMTP próprio e a confirmação de e-mail ficam para depois do MVP, conforme a [issue #35](https://github.com/ValkorProjects/RendaFacil-2/issues/35). Reinicie o servidor: o **Perfil** passa a oferecer **Entrar** e **Criar conta**. Sem uma sessão ativa, as telas privadas ficam inacessíveis; a política de privacidade continua pública.
 
 > **Segurança:** toda variável `VITE_` vai junto com o código para o navegador. Só a chave publicável pode ficar aqui, nunca uma chave `secret` ou `service_role`. Os dados ficam protegidos pelas políticas de RLS de cada tabela.
 
@@ -345,7 +347,7 @@ O processo de deploy de produção, incluindo hospedagem, URL e release, está s
 
 2. Faça commits pequenos, com mensagens em português que digam o que mudou.
 3. Rode as checagens da seção [Scripts](#scripts) antes de enviar.
-4. Abra o pull request para a `dev` e referencie a issue com `Refs #N` (não use `Closes #N`, pois esse PR é integrado primeiro à `dev`). A `main` recebe a `dev` quando uma versão está pronta.
+4. Abra o pull request para a `dev` e referencie a issue com `Refs #N`. Não use `Closes #N`: o GitHub só fecha issues automaticamente quando o PR é integrado à branch padrão (`main`), e este PR vai primeiro para `dev`. A `main` recebe a `dev` quando uma versão está pronta.
 5. Depois do merge e de confirmar os critérios de aceite, feche a issue manualmente.
 6. Mudança no cálculo precisa de caso de teste e, se mudar uma regra, de atualização em [`docs/calculo-irpf-2026.md`](docs/calculo-irpf-2026.md).
 
