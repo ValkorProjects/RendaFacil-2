@@ -24,6 +24,8 @@ create trigger on_auth_user_created_declaracao
   on conflict (user_id, ano_calendario) do nothing;
 
 revoke execute on function public.handle_new_user_declaracao() from public, anon, authenticated;
+revoke execute on function public.handle_new_user() from public, anon, authenticated;
+revoke execute on function public.handle_user_update() from public, anon, authenticated;
 
 -- RF-04: o registro do aceite só é gravado pelos triggers de cadastro e de nome. O app não grava
 -- em perfis pela API, então o usuário fica só com leitura do próprio perfil e não consegue
