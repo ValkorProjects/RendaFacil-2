@@ -124,7 +124,7 @@ Depois, abra no celular o endereço "Network" que o Vite mostra. Por `http://192
 | `npm run build`               | Confere os tipos e gera a versão de produção em `dist/`              |
 | `npm run preview`             | Serve a versão de produção localmente                                |
 | `npm run type-check`          | Confere os tipos com `vue-tsc`                                       |
-| `npm test`                    | Roda os testes uma vez, com Vitest                                   |
+| `npm test`                    | Roda os testes uma vez: Vitest e os testes de conta em `tests/`      |
 | `npm run test:watch`          | Roda os testes e repete a cada alteração                             |
 | `npm run lint`                | Roda o ESLint e corrige o que for automático                         |
 | `npm run format`              | Formata `src/` com Prettier                                          |
