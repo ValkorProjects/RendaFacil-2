@@ -356,7 +356,7 @@ The production deployment process, including the hosting provider, production UR
 **No install option appears.** Check that the page is on HTTPS or `localhost`, that it isn't already installed, and that you're not in a private/incognito window.
 
 **Access and account creation are unavailable.** The profile page shows this notice if either Supabase
-environment variable is missing or invalid. Set both `VITE_SUPABASE_URL` and
+environment variable is missing. Set both `VITE_SUPABASE_URL` and
 `VITE_SUPABASE_PUBLISHABLE_KEY` in `.env` to the values from your project, then restart the dev
 server. Private pages remain inaccessible until you sign in; public pages such as the privacy policy
 remain available.
