@@ -58,6 +58,7 @@ Em desenvolvimento, rumo ao MVP. As funcionalidades estão organizadas em issues
 | Tela de Rendas com estimativa do imposto (dados ainda só em memória)                  | Home com o resultado e o detalhe do cálculo                  |
 | Cadastro, login, perfil, consentimento e política de privacidade                      | Publicação da Edge Function de exclusão e deploy de produção |
 | Documentação do cálculo                                                               |                                                              |
+| Layout base: saudação, barra inferior (Home, Rendas, Dedutíveis, Menu)                |                                                              |
 
 Fora do escopo do MVP: aluguel recebido, autônomo, MEI ou PJ (carnê-leão), aposentadoria, ganho de capital, bolsa de valores, renda do exterior e previdência privada. A lista completa está na [seção 9 da documentação do cálculo](docs/calculo-irpf-2026.md#9-fora-do-escopo-do-mvp).
 
@@ -165,7 +166,8 @@ npm run build
 ├── public/                    Arquivos estáticos (favicon e ícones do app)
 ├── src/
 │   ├── assets/main.css        Estilos globais e variáveis de cor
-│   ├── components/            Componentes reutilizáveis (navegação, cartões, ícones)
+│   ├── components/            Componentes reutilizáveis (cabeçalho, navegação, cartões, ícones,
+│   │                          carregando, lista vazia, erro e confirmação de exclusão)
 │   │   └── TaxEstimateCard.vue  Estimativa do imposto e "Ver o cálculo" na tela de Rendas
 │   ├── composables/
 │   │   └── usePwaInstall.ts   Botão "Instalar app"
@@ -173,12 +175,12 @@ npm run build
 │   │   ├── parametros/        Tabelas e valores de cada ano-calendário
 │   │   └── __tests__/         Casos de referência do motor
 │   ├── lib/supabase.ts        Cliente do Supabase
-│   ├── router/index.ts        Rotas
+│   ├── router/                Rotas (index.ts) e abas da barra inferior (tabs.ts)
 │   ├── stores/                Estado global (sessão do usuário, rendas da tela de Rendas)
 │   ├── types/database.types.ts  Tipos do banco
 │   ├── utils/                 Formatação de moeda e do resultado
 │   ├── views/                 Uma tela por arquivo
-│   ├── App.vue                Estrutura do app: tela atual e navegação
+│   ├── App.vue                Estrutura do app: saudação, tela atual e barra inferior
 │   └── main.ts                Ponto de entrada
 ├── supabase/
 │   ├── config.toml            Configuração do Supabase local

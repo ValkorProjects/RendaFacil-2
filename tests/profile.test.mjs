@@ -192,18 +192,21 @@ test('password changes reject invalid inputs and incorrect current passwords bef
 
 test('dependents without income survive saving and account data is cleared on sign-out', async () => {
   income.draftIncomes[0].amount = '100000'
-  income.setDraftHasDependents(true)
-  income.setDraftDependentCount(2)
-  income.draftDependents[1].incomeType = 'estagio'
-  income.draftDependents[1].amount = '50000'
+  income.setHasDependents(true)
+  income.setDependentCount(2)
+  income.dependents[1].incomeType = 'estagio'
+  income.dependents[1].amount = '50000'
   assert.equal(income.saveDraft(), true)
   assert.equal(income.dependentCount, 2)
-  assert.equal(income.registrations[0].dependents[0].incomeType, 'none')
+  assert.equal(income.dependents[0].incomeType, 'none')
   assert.equal(income.taxableTotal, 1800000)
   income.draftIncomes[0].amount = '20000'
+  income.alimonyPaid = '80000'
   await auth.signOut()
   assert.equal(income.registrations.length, 0)
   assert.equal(income.draftIncomes[0].amount, '')
+  assert.equal(income.dependentCount, 0)
+  assert.equal(income.alimonyPaid, '')
 })
 
 test('deletion failure preserves the account and data; confirmed deletion signs out and clears them', async () => {
