@@ -1,211 +1,301 @@
 # RendaFacil
 
-> **TODO:** one-sentence description of what this app does and who it is for.
+App web que ajuda o trabalhador assalariado a estimar o resultado da própria declaração do Imposto de Renda: se vai ter **restituição** ou **imposto a pagar**, e por quê.
 
-A Vue 3 single-page app that installs as a Progressive Web App, with a Supabase client ready to be connected.
+A primeira versão estima a **declaração de 2027, com a renda de 2026**, para quem recebe salário (CLT).
 
-Sections marked **TODO** are documentation placeholders — fill them in as the project takes shape.
+## Sumário
 
-## Table of contents
-
-- [Overview](#overview)
-- [Features](#features)
-- [Tech stack](#tech-stack)
-- [Getting started](#getting-started)
-- [Available scripts](#available-scripts)
-- [Project structure](#project-structure)
-- [Progressive Web App](#progressive-web-app)
+- [O problema](#o-problema)
+- [O que o app faz](#o-que-o-app-faz)
+- [Situação do projeto](#situação-do-projeto)
+- [Tecnologias](#tecnologias)
+- [Como rodar](#como-rodar)
+- [Scripts](#scripts)
+- [Estrutura do projeto](#estrutura-do-projeto)
+- [Motor de cálculo](#motor-de-cálculo)
 - [Supabase](#supabase)
-- [Customising the template](#customising-the-template)
-- [Architecture](#architecture)
-- [Deployment](#deployment)
-- [Troubleshooting](#troubleshooting)
-- [Contributing](#contributing)
-- [License](#license)
+- [Progressive Web App](#progressive-web-app)
+- [Deploy](#deploy)
+- [Como contribuir](#como-contribuir)
+- [Problemas comuns](#problemas-comuns)
 
-## Overview
+## O problema
 
-RendaFacil is an app in development to help people estimate their annual income tax from income, dependents and deductible expenses.
+Todo mês, a empresa desconta o IR do salário. Na declaração do ano seguinte, a conta é refeita com a renda do ano inteiro, e o resultado pode ser uma restituição ou uma cobrança. Muita gente só descobre qual dos dois na hora de declarar, sem entender de onde veio o valor.
 
-### Project status
+Mesmo quem tem uma empresa só e salário igual o ano todo pode ter imposto a pagar no ajuste. Além disso, é comum errar o que pode ser deduzido: na pesquisa feita pelo projeto, 13 de 35 pessoas achavam que remédio de farmácia deduz, e não deduz.
 
-The project is under active development. The income registration screen already uses the tax calculation engine, but its data is kept only in memory for the current session. The initial questionnaire, final dependents and deductible-expenses screens, and final results screen are not yet complete.
+O RendaFacil quer responder, antes da declaração:
 
-## Features
+- quanto a pessoa deve receber ou pagar no ajuste anual;
+- qual modelo vale mais a pena, o completo ou o simplificado;
+- quais despesas reduzem o imposto e quanto cada uma vale;
+- de onde vem cada número, passo a passo.
 
-The planned MVP flow has four stages. These describe the target experience, not four completed screens:
+## O que o app faz
 
-1. **Initial questionnaire:** collect basic information (such as employers, dependents, pension and health or education expenses) and identify income types the app does not yet calculate, such as rent or self-employment.
-2. **Income:** enter income statements from each employer, or estimate income from monthly salary.
-3. **Dependents and deductions:** register dependents and health, education and alimony expenses, with explanations when an expense is not deductible.
-4. **Results:** show the estimated refund or tax due, the recommended tax model and a detailed calculation for both models.
+Quando o MVP estiver completo, o fluxo terá quatro etapas. Elas descrevem o produto planejado, não quatro telas já concluídas. O que funciona hoje está em [Situação do projeto](#situação-do-projeto).
 
-See [Project status](#project-status) for what is currently implemented.
+1. **Questionário inicial:** coleta o básico (quantas empresas pagaram salário, dependentes, pensão, gastos com saúde e educação) e identifica situações que o app ainda não calcula, como aluguel recebido ou renda de autônomo.
+2. **Rendas:** a pessoa lança o informe de rendimentos de cada empresa ou, antes de ele chegar, estima pelo salário mensal.
+3. **Dependentes e dedutíveis:** cadastro de dependentes e de despesas de saúde, educação e pensão alimentícia, avisando quando uma despesa não deduz e por quê.
+4. **Resultado:** a tela principal mostra um único valor (restituição ou imposto a pagar), o modelo recomendado e o cálculo detalhado nos dois modelos.
 
-## Tech stack
+O cálculo segue as tabelas oficiais de 2026, incluindo a redução da Lei 15.270/2025, e está documentado com fórmulas e fontes em [`docs/calculo-irpf-2026.md`](docs/calculo-irpf-2026.md).
 
-| Area       | Tool                                                                                |
-| ---------- | ----------------------------------------------------------------------------------- |
-| Framework  | [Vue 3](https://vuejs.org/) (Composition API, `<script setup>`)                     |
-| Language   | [TypeScript](https://www.typescriptlang.org/)                                       |
-| Build tool | [Vite](https://vite.dev/)                                                           |
-| Routing    | [Vue Router](https://router.vuejs.org/)                                             |
-| State      | [Pinia](https://pinia.vuejs.org/)                                                   |
-| PWA        | [vite-plugin-pwa](https://vite-pwa-org.netlify.app/) (Workbox)                      |
-| Backend    | [Supabase](https://supabase.com/) via `@supabase/supabase-js` _(not yet connected)_ |
-| Quality    | ESLint, Prettier, `vue-tsc`, [Vitest](https://vitest.dev/), GitHub Actions          |
+O resultado é uma **estimativa**. O que vale é a declaração entregue à Receita Federal.
 
-## Getting started
+## Situação do projeto
 
-### Prerequisites
+Em desenvolvimento, rumo ao MVP. As funcionalidades estão organizadas em issues com o prefixo `RF-` no [GitHub](https://github.com/ValkorProjects/RendaFacil-2/issues).
 
-- [Node.js](https://nodejs.org/) `24.x` (the version in `package.json` → `engines`)
-- npm 11 or newer (bundled with Node.js 24). Use it to add or update dependencies: npm 10 cannot
-  resolve Vite 8's optional peer dependencies and rewrites the lockfile.
+| Pronto                                                                                | Em andamento ou planejado                                    |
+| ------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| Motor de cálculo do ajuste anual e da folha mensal, com testes de casos de referência | Questionário inicial com triagem                             |
+| Parâmetros fiscais de 2026                                                            | Persistência das rendas e dos dependentes no Supabase        |
+| Estrutura do banco e políticas RLS definidas em [`supabase/`](supabase/)              | Telas finais de Rendas, Dependentes e Dedutíveis             |
+| Tela de Rendas com estimativa do imposto (dados ainda só em memória)                  | Home com o resultado e o detalhe do cálculo                  |
+| Cadastro, login, perfil, consentimento e política de privacidade                      | Publicação da Edge Function de exclusão e deploy de produção |
+| Documentação do cálculo                                                               |                                                              |
 
-### Install
+Fora do escopo do MVP: aluguel recebido, autônomo, MEI ou PJ (carnê-leão), aposentadoria, ganho de capital, bolsa de valores, renda do exterior e previdência privada. A lista completa está na [seção 9 da documentação do cálculo](docs/calculo-irpf-2026.md#9-fora-do-escopo-do-mvp).
+
+## Tecnologias
+
+| Área           | Ferramenta                                                                  |
+| -------------- | --------------------------------------------------------------------------- |
+| Framework      | [Vue 3](https://vuejs.org/) (Composition API, `<script setup>`)             |
+| Linguagem      | [TypeScript](https://www.typescriptlang.org/)                               |
+| Build          | [Vite](https://vite.dev/)                                                   |
+| Rotas          | [Vue Router](https://router.vuejs.org/)                                     |
+| Estado         | [Pinia](https://pinia.vuejs.org/)                                           |
+| App instalável | [vite-plugin-pwa](https://vite-pwa-org.netlify.app/) (Workbox)              |
+| Backend        | [Supabase](https://supabase.com/) (Postgres, autenticação e RLS)            |
+| Qualidade      | ESLint, Prettier, `vue-tsc`, [Vitest](https://vitest.dev/) e GitHub Actions |
+
+## Como rodar
+
+### Pré-requisitos
+
+- [Node.js](https://nodejs.org/) `24.x`, a versão de `engines` no `package.json`.
+- npm 11 ou mais novo, que já vem com o Node.js 24. Use-o para instalar ou atualizar dependências: o npm 10 não resolve as dependências opcionais do Vite 8 e reescreve o `package-lock.json`.
+
+### Instalação
 
 ```bash
 npm install
 ```
 
-### Environment variables
+### Variáveis de ambiente
 
-The app reads its configuration from `.env`. That file is git-ignored, so on a fresh clone create it from the example:
+O app lê a configuração do arquivo `.env`, que não vai para o Git. Num clone novo, crie-o a partir do exemplo:
 
 ```bash
 cp .env.example .env
 ```
 
-| Variable                        | Required | Description                        |
-| ------------------------------- | -------- | ---------------------------------- |
-| `VITE_SUPABASE_URL`             | Yes      | Supabase project URL               |
-| `VITE_SUPABASE_PUBLISHABLE_KEY` | Yes      | Supabase publishable (or anon) key |
+| Variável                        | Obrigatória | Descrição                                   |
+| ------------------------------- | ----------- | ------------------------------------------- |
+| `VITE_SUPABASE_URL`             | Sim         | URL do projeto no Supabase                  |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | Sim         | Chave publicável (antiga `anon`) do projeto |
 
-The values in `.env.example` are placeholders, not usable project credentials. After copying the file,
-replace both values with those from your Supabase project; otherwise, the app cannot authenticate
-users. Without both variables, the profile page shows an unavailable-access message instead of the
-login form, and private pages remain inaccessible. The app requires both variables to verify the
-user's session before allowing access to private pages. See [Supabase](#supabase).
+Os valores de `.env.example` são exemplos, não credenciais válidas. Depois de copiar o arquivo,
+substitua-os pelos valores do seu projeto Supabase. Se qualquer uma das variáveis estiver faltando,
+o perfil informa que o acesso e o cadastro estão indisponíveis e as telas privadas não podem ser
+acessadas. Veja
+[Supabase](#supabase).
 
-Restart the dev server after changing `.env`.
+Reinicie o servidor depois de alterar o `.env`.
 
-### Run
+### Servidor de desenvolvimento
 
 ```bash
 npm run dev
 ```
 
-This starts the dev server and opens the app in your browser at <http://localhost:5173> (Vite picks the next free port if 5173 is taken — the URL is printed in the terminal). Edits to the source hot-reload.
+O app abre no navegador em <http://localhost:5173>. Se a porta estiver ocupada, o Vite usa a próxima livre e mostra o endereço no terminal. As alterações no código aparecem na hora.
 
-To try the app from a phone on the same Wi-Fi network:
+Para abrir no celular, na mesma rede Wi-Fi:
 
 ```bash
 npm run dev -- --host
 ```
 
-Then open the "Network" URL that Vite prints. Note that installing the PWA does not work over a plain `http://192.168…` address — see [Requirements](#requirements).
+Depois, abra no celular o endereço "Network" que o Vite mostra. Por `http://192.168…` o app abre, mas não pode ser instalado (veja [Progressive Web App](#progressive-web-app)).
 
-## Available scripts
+## Scripts
 
-| Command                       | What it does                                                    |
-| ----------------------------- | --------------------------------------------------------------- |
-| `npm run dev`                 | Start the dev server with hot reload and open the browser       |
-| `npm run build`               | Type-check, then build for production into `dist/`              |
-| `npm run preview`             | Serve the production build locally                              |
-| `npm run type-check`          | Type-check the project with `vue-tsc`                           |
-| `npm test`                    | Run Vitest and the profile and account lifecycle tests in `tests/` |
-| `npm run test:watch`          | Run the unit tests and re-run them on every change              |
-| `npm run lint`                | Lint with ESLint and fix what can be fixed automatically        |
-| `npm run format`              | Format `src/` with Prettier                                     |
-| `npm run generate-pwa-assets` | Regenerate the app icons in `public/` from `public/favicon.svg` |
+| Comando                       | O que faz                                                                |
+| ----------------------------- | ------------------------------------------------------------------------ |
+| `npm run dev`                 | Sobe o servidor de desenvolvimento e abre o navegador                    |
+| `npm run build`               | Confere os tipos e gera a versão de produção em `dist/`                  |
+| `npm run preview`             | Serve a versão de produção localmente                                    |
+| `npm run type-check`          | Confere os tipos com `vue-tsc`                                           |
+| `npm test`                    | Roda o Vitest e os testes de perfil e ciclo de vida da conta em `tests/` |
+| `npm run test:watch`          | Roda os testes e repete a cada alteração                                 |
+| `npm run lint`                | Roda o ESLint e corrige o que for automático                             |
+| `npm run format`              | Formata `src/` com Prettier                                              |
+| `npm run generate-pwa-assets` | Gera de novo os ícones em `public/` a partir de `public/favicon.svg`     |
 
-Every pull request into `dev` or `main` runs ESLint, the Prettier check, the unit tests, the type-check and the production build in GitHub Actions ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)). Run the same checks locally before pushing.
+Todo pull request para `dev` ou `main` roda no GitHub Actions o ESLint, a checagem do Prettier, os testes, a checagem de tipos e o build ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)). Rode as mesmas checagens antes de enviar:
 
-## Project structure
-
-```text
-├── .github/workflows/ci.yml Checks run on every pull request
-├── docs/
-│   └── calculo-irpf-2026.md How the income tax engine calculates (formulas and sources)
-├── public/                  Static files copied as-is (favicon and PWA icons)
-├── src/
-│   ├── assets/main.css      Global styles and design tokens (colours, glass effect)
-│   ├── components/
-│   │   ├── AppIcon.vue      Inline SVG icons
-│   │   ├── BottomNav.vue    Glass navigation island
-│   │   ├── PageCard.vue     Glass card used by every sample page
-│   │   └── TaxEstimateCard.vue  Tax estimate and "Ver o cálculo" on the income page
-│   ├── composables/
-│   │   └── usePwaInstall.ts In-app "Install app" button logic
-│   ├── irpf/                Income tax engine: pure functions, money in cents (tests in __tests__/ and *.test.ts)
-│   ├── lib/supabase.ts      Supabase client
-│   ├── router/index.ts      Route definitions
-│   ├── stores/auth.ts       Pinia store tracking the Supabase session
-│   ├── stores/income.ts     Income entered on the income page and its tax estimate (in memory)
-│   ├── types/
-│   │   └── database.types.ts  Supabase schema types (placeholder until generated)
-│   ├── views/               One component per page
-│   ├── App.vue              App shell: page outlet + bottom nav
-│   └── main.ts              Entry point
-├── .env.example             Template for the environment variables
-├── index.html               HTML entry point
-├── pwa-assets.config.ts     Icon generation settings
-├── vite.config.ts           Vite and PWA (manifest, service worker) settings
-└── vitest.config.ts         Unit test settings
+```bash
+npm run lint
 ```
 
-Imports can use `@/` as a shortcut for `src/`, e.g. `import PageCard from '@/components/PageCard.vue'`.
+```bash
+npx prettier --check src/
+```
+
+```bash
+npm test
+```
+
+```bash
+npm run build
+```
+
+## Estrutura do projeto
+
+```text
+├── .github/workflows/ci.yml   Checagens de todo pull request
+├── docs/
+│   └── calculo-irpf-2026.md   Fórmulas, parâmetros e fontes do cálculo
+├── public/                    Arquivos estáticos (favicon e ícones do app)
+├── src/
+│   ├── assets/main.css        Estilos globais e variáveis de cor
+│   ├── components/            Componentes reutilizáveis (navegação, cartões, ícones)
+│   │   └── TaxEstimateCard.vue  Estimativa do imposto e "Ver o cálculo" na tela de Rendas
+│   ├── composables/
+│   │   └── usePwaInstall.ts   Botão "Instalar app"
+│   ├── irpf/                  Motor de cálculo do IRPF (funções puras, valores em centavos)
+│   │   ├── parametros/        Tabelas e valores de cada ano-calendário
+│   │   └── __tests__/         Casos de referência do motor
+│   ├── lib/supabase.ts        Cliente do Supabase
+│   ├── router/index.ts        Rotas
+│   ├── stores/                Estado global (sessão do usuário, rendas da tela de Rendas)
+│   ├── types/database.types.ts  Tipos do banco
+│   ├── utils/                 Formatação de moeda e do resultado
+│   ├── views/                 Uma tela por arquivo
+│   ├── App.vue                Estrutura do app: tela atual e navegação
+│   └── main.ts                Ponto de entrada
+├── supabase/
+│   ├── config.toml            Configuração do Supabase local
+│   ├── functions/             Edge Function delete-account (exclusão de conta)
+│   └── migrations/            Tabelas e políticas de acesso (RLS) do banco
+├── tests/                     Testes Node de perfil e exclusão de conta
+├── .env.example               Modelo das variáveis de ambiente
+├── vite.config.ts             Configuração do Vite e do PWA
+└── vitest.config.ts           Configuração dos testes
+```
+
+Nos imports, `@/` é um atalho para `src/`, como em `import PageCard from '@/components/PageCard.vue'`.
+
+## Motor de cálculo
+
+O cálculo fica em [`src/irpf/`](src/irpf/), separado das telas. As telas só montam a entrada e mostram o resultado, sem fazer conta própria.
+
+- **Funções puras:** recebem os dados e os parâmetros do ano e devolvem o resultado, sem acessar banco ou tela. A mesma entrada sempre dá o mesmo resultado.
+- **Dinheiro em centavos:** todo valor é um número inteiro de centavos, e as multiplicações por alíquota arredondam ao centavo de forma definida. Não há `float` em conta de dinheiro.
+- **Parâmetros por ano:** os valores da lei ficam só em [`src/irpf/parametros/2026.ts`](src/irpf/parametros/2026.ts). Para o ano seguinte, basta um arquivo novo.
+- **Os dois modelos:** o motor calcula o completo e o simplificado, escolhe o de menor imposto e devolve os valores intermediários de cada um, para a tela explicar a conta.
+
+```ts
+import { calcularAjusteAnual, montarEntrada } from '@/irpf'
+
+const resultado = calcularAjusteAnual(montarEntrada({ fontes, dependentes, despesas }))
+
+resultado.resultado // > 0 restituição · < 0 imposto a pagar · 0 sem saldo
+resultado.modelo // 'completo' ou 'simplificado'
+```
+
+As fórmulas, a tabela de parâmetros com as fontes oficiais, as regras de arredondamento e um exemplo completo estão em [`docs/calculo-irpf-2026.md`](docs/calculo-irpf-2026.md). Todo erro de cálculo encontrado deve virar um caso novo nos testes.
+
+## Supabase
+
+As migrations em [`supabase/migrations/`](supabase/migrations/) definem as tabelas `perfis`,
+`declaracoes`, `fontes_pagadoras`, `dependentes` e `despesas`, com políticas RLS (Row Level Security)
+para restringir o acesso aos dados do usuário autenticado. A tela de Rendas ainda mantém rendimentos
+e dependentes apenas em memória; a persistência deles no Supabase ainda está planejada.
+
+### Conectar um projeto
+
+1. Crie um projeto no [painel do Supabase](https://supabase.com/dashboard). Em **Project Settings → API**, copie a **Project URL** e a chave **publishable** (em projetos antigos, `anon`).
+2. Substitua os valores de exemplo no `.env`:
+
+   ```dotenv
+   VITE_SUPABASE_URL=https://seu-projeto.supabase.co
+   VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
+   ```
+
+3. Em **Authentication → URL Configuration**, defina a Site URL e permita o redirecionamento para o perfil (`http://localhost:5173/user` no desenvolvimento e a URL `/user` do app publicado). Se o app estiver em um subdiretório, inclua o caminho base.
+4. Ative o provedor de e-mail. Durante o desenvolvimento, a confirmação de e-mail fica desativada no projeto por causa do limite de envios do Supabase. O SMTP próprio e a confirmação de e-mail ficam para depois do MVP, conforme a [issue #35](https://github.com/ValkorProjects/RendaFacil-2/issues/35). Reinicie o servidor: o **Perfil** passa a oferecer **Entrar** e **Criar conta**. Sem uma sessão ativa, as telas privadas ficam inacessíveis; a política de privacidade continua pública.
+
+> **Segurança:** toda variável `VITE_` vai junto com o código para o navegador. Só a chave publicável pode ficar aqui, nunca uma chave `secret` ou `service_role`. Os dados ficam protegidos pelas políticas de RLS de cada tabela.
+
+### Usar o cliente
+
+```ts
+import { getSupabase } from '@/lib/supabase'
+
+const { data, error } = await getSupabase().from('declaracoes').select()
+```
+
+`getSupabase()` devolve um cliente único, criado na primeira chamada. Se as variáveis estiverem faltando, ele lança um erro explicando o que fazer. Para código que precisa funcionar sem o Supabase, confira antes `isSupabaseConfigured`, do mesmo arquivo.
+
+[`src/stores/auth.ts`](src/stores/auth.ts) acompanha a sessão e expõe `session`, `user`, `ready`,
+`initializationError` e `isGuest`. As ações incluem entrar, criar conta, atualizar perfil e e-mail,
+alterar e recuperar senha, reenviar confirmação de cadastro, sair e excluir a conta. O cadastro exige
+aceite da política de privacidade; a versão e a data do aceite são gravadas em `perfis` pelo trigger.
+
+### Exclusão de conta
+
+A exclusão depende da Edge Function
+[`delete-account`](supabase/functions/delete-account/index.ts), que precisa ser publicada no mesmo
+projeto Supabase usado pelo app:
+
+```bash
+npx supabase functions deploy delete-account --project-ref SEU_PROJECT_REF --no-verify-jwt
+```
+
+A função valida a sessão com `auth.getUser`, recusa usuários anônimos, encerra as sessões e exclui
+somente a conta autenticada. O Supabase fornece `SUPABASE_SERVICE_ROLE_KEY` ao ambiente da função;
+nunca coloque essa chave em variáveis `VITE_` ou no frontend. Até a função ser publicada, a exclusão
+da conta mostra um erro e não informa sucesso.
+
+### Tipos do banco
+
+Para gerar os tipos do TypeScript a partir do banco:
+
+```bash
+npx supabase login
+```
+
+```bash
+npx supabase gen types typescript --project-id seu-project-ref > src/types/database.types.ts
+```
+
+### Funcionamento offline
+
+O app guarda em cache apenas os próprios arquivos. As consultas ao Supabase sempre vão para a rede, então os dados não ficam disponíveis offline.
 
 ## Progressive Web App
 
-The PWA setup lives in `vite.config.ts`. `vite-plugin-pwa` generates two things:
+O RendaFacil pode ser instalado no celular e no computador como um app. A configuração fica em `vite.config.ts`, e o `vite-plugin-pwa` gera o manifesto (nome, cores e ícones) e o service worker, que guarda os arquivos do app para abrir mais rápido e funcionar sem internet. Quando sai uma versão nova, ela é baixada em segundo plano e vale na próxima vez que o app for aberto.
 
-- a **web app manifest** (name, colours, icons), which is what makes the app installable;
-- a **service worker** that caches the built files, so the app shell loads offline and on repeat visits.
+O navegador só oferece a instalação em **HTTPS** ou em **`localhost`**.
 
-Updates are automatic: when a new version is deployed, the service worker downloads it in the background and it takes effect the next time the app is opened.
+### Instalar
 
-### Requirements
+- **Chrome ou Edge no computador:** clique no ícone **Instalar** no fim da barra de endereço, ou no botão **Instalar app** do app.
+- **Chrome no Android:** toque em **Instalar app** no app, ou em **⋮ → Adicionar à tela inicial → Instalar**.
+- **Safari no iPhone e no iPad:** toque em **Compartilhar → Adicionar à Tela de Início → Adicionar**. O iOS não tem aviso de instalação, então o botão do app não aparece.
+- **Safari no Mac:** **Arquivo → Adicionar ao Dock… → Adicionar**.
 
-Browsers only offer installation when the app is served from **HTTPS** or from **`localhost`**. A phone opening `http://192.168.x.x:5173` on your network will show the app but will not offer to install it — deploy to an HTTPS host (or use an HTTPS tunnel) to install on a phone.
+### Testar localmente
 
-### Installing the app
-
-**Desktop — Chrome or Edge**
-
-1. Open the app's URL.
-2. Click the **Install** icon at the right end of the address bar, or press the **Install app** button on the Home page.
-3. Confirm with **Install**. The app opens in its own window and gets a shortcut in the Start menu / Launchpad.
-
-If the icon isn't there, use the browser menu: **⋮ → Cast, save and share → Install page as app…** (Chrome) or **… → Apps → Install this site as an app** (Edge).
-
-**Android — Chrome**
-
-1. Open the app's URL.
-2. Tap the **Install app** button on the Home page, or **⋮ → Add to Home screen → Install**.
-3. The app appears on the home screen and in the app drawer.
-
-**iPhone and iPad — Safari**
-
-1. Open the app's URL in Safari.
-2. Tap the **Share** button.
-3. Scroll down and tap **Add to Home Screen**, then **Add**.
-
-iOS has no install prompt, so the in-app button never appears there — the Share menu is the only route.
-
-**Mac — Safari**
-
-1. Open the app's URL in Safari.
-2. Choose **File → Add to Dock…**, then **Add**.
-
-**Uninstalling**: on desktop, open the installed app and choose **⋮ → Uninstall**; on mobile, remove it like any other app.
-
-### Testing the PWA locally
-
-`npm run dev` does not register a service worker. This keeps the development module graph current and avoids stale assets making buttons temporarily unresponsive. The install option is available when serving the production build with `npm run preview`.
-
-To test the real thing — the production service worker with full offline caching — build and preview instead:
+O `npm run dev` não registra o service worker, para não servir arquivos antigos durante o desenvolvimento. Para testar a instalação e o funcionamento offline, use a versão de produção:
 
 ```bash
 npm run build
@@ -215,158 +305,58 @@ npm run build
 npm run preview
 ```
 
-### Changing the icon
+### Trocar o ícone
 
-1. Replace `public/favicon.svg` with your logo (a square SVG with a transparent background works best).
-2. Run `npm run generate-pwa-assets` to regenerate the PNG and ICO files in `public/`.
+1. Substitua `public/favicon.svg` (um SVG quadrado com fundo transparente funciona melhor).
+2. Rode `npm run generate-pwa-assets` para gerar de novo os PNG e o ICO em `public/`.
 
-The solid backdrop used for the home-screen icons is set in `pwa-assets.config.ts`.
+A cor de fundo dos ícones da tela inicial fica em `pwa-assets.config.ts`.
 
-## Supabase
+## Deploy
 
-The app checks the persisted Supabase session before showing the main application. Users must sign in or create an account before accessing the other pages.
+`npm run build` gera o site estático em `dist/`, que pode ser servido por uma hospedagem estática.
+Para produção:
 
-### Connecting a project
+- **HTTPS** é necessário para o service worker e a instalação do app.
+- **Fallback da SPA:** como o roteador usa URLs limpas (por exemplo, `/income`), a hospedagem precisa
+  servir `index.html` para caminhos desconhecidos.
+- **Variáveis de ambiente:** configure `VITE_SUPABASE_URL` e `VITE_SUPABASE_PUBLISHABLE_KEY` nas
+  configurações de build da hospedagem. O Vite as incorpora ao app durante o build; alterar os valores
+  exige gerar e publicar um novo build.
 
-1. Create a project at [supabase.com](https://supabase.com/dashboard).
-2. In the dashboard, open **Project Settings → API** and copy the **Project URL** and the **publishable** key (older projects call it the `anon` key — either works).
-3. Paste them into `.env`:
+O processo de deploy de produção, incluindo hospedagem, URL e release, está sendo acompanhado na
+[issue #20 (RF-19)](https://github.com/ValkorProjects/RendaFacil-2/issues/20).
 
-   ```dotenv
-   VITE_SUPABASE_URL=https://your-project-ref.supabase.co
-   VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
+## Como contribuir
+
+1. Escolha uma issue e crie uma branch a partir da `dev`, com prefixo pelo tipo: `feature/`, `fix/` ou `docs/`.
+
+   ```bash
+   git checkout dev
    ```
 
-4. In **Authentication → URL Configuration**, set the Site URL and allow the profile redirect URL (`http://localhost:5173/user` for local development, plus the deployed app's `/user` URL). Include the base path if the app is hosted in a subdirectory.
-5. Enable the Email provider and configure confirmation emails. Restart the dev server; **Perfil** now offers **Entrar** and **Criar conta**. Without an active session, private pages remain inaccessible.
+   ```bash
+   git pull
+   ```
 
-> **Security:** every `VITE_` variable is bundled into the code sent to the browser. Only the publishable key belongs here — never a `secret` / `service_role` key. Protect your data with [Row Level Security](https://supabase.com/docs/guides/database/postgres/row-level-security) policies on every table.
+   ```bash
+   git checkout -b feature/nome-da-funcionalidade
+   ```
 
-### Using the client
+2. Faça commits pequenos, com mensagens em português que digam o que mudou.
+3. Rode as checagens da seção [Scripts](#scripts) antes de enviar.
+4. Abra o pull request para a `dev` e referencie a issue com `Refs #N`. Não use `Closes #N`: o GitHub só fecha issues automaticamente quando o PR é integrado à branch padrão (`main`), e este PR vai primeiro para `dev`. A `main` recebe a `dev` quando uma versão está pronta.
+5. Depois do merge e de confirmar os critérios de aceite, feche a issue manualmente.
+6. Mudança no cálculo precisa de caso de teste e, se mudar uma regra, de atualização em [`docs/calculo-irpf-2026.md`](docs/calculo-irpf-2026.md).
 
-```ts
-import { getSupabase } from '@/lib/supabase'
+## Problemas comuns
 
-const { data, error } = await getSupabase().from('your_table').select()
-```
+**O navegador mostra uma versão antiga em `localhost`.** Um service worker de uma sessão anterior ainda está servindo arquivos em cache. Abra o DevTools → **Application → Service workers → Unregister** e recarregue a página.
 
-`getSupabase()` returns one shared client, created the first time it is called. It throws a descriptive error if the environment variables are missing; check `isSupabaseConfigured` (same module) first if a code path must work without Supabase.
+**A opção de instalar não aparece.** Confira se a página está em HTTPS ou em `localhost`, se o app já não está instalado e se não é uma janela anônima.
 
-### Authentication
-
-[The auth store](src/stores/auth.ts) listens for auth changes and exposes `session`, `user`, `ready`, `initializationError` and `isGuest`. Its actions support sign-in, registration, profile and email updates, password changes and recovery, resending signup confirmation, sign-out and account deletion. Signed-out and anonymous Supabase users remain on the profile page until they authenticate.
-
-[The profile page](src/views/UserView.vue) displays and edits the account name. Registration requires explicit acceptance of the privacy policy; the accepted version and timestamp are written by the trigger to `public.perfis`. Consent data is not used as an authorization claim.
-
-Email changes use `auth.updateUser` and keep showing the current email until Supabase confirms the new address. With Secure Email Change enabled, follow the confirmation messages sent to both addresses. Registration also handles projects that require email confirmation before a session is created. The access form validates password confirmation, can resend a signup confirmation message, and provides a password recovery flow.
-
-The profile also lists dependents saved in the income store, including those without income, and
-offers password changes (current password, new password, confirmation), password recovery, sign-out and permanent
-account deletion with a centered confirmation dialog requiring `EXCLUIR`. Income and dependents currently live only
-in memory for the current session; they are cleared when an authenticated account signs out or
-changes. They are not yet synchronized to a database or retained after a page reload.
-
-Account deletion requires deploying [the delete-account Edge Function](supabase/functions/delete-account/index.ts)
-to the same Supabase project used by the frontend:
-
-```bash
-npx supabase functions deploy delete-account --project-ref YOUR_PROJECT_REF --no-verify-jwt
-```
-
-The function validates the bearer token using `auth.getUser`, rejects anonymous users, revokes
-sessions and deletes only the authenticated user via the Admin API. `--no-verify-jwt` bypasses
-the gateway's legacy JWT check; authentication is still required and checked inside the function.
-Supabase supplies `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` to hosted functions. Never add
-the service role key to frontend environment variables. Until this function is deployed, account
-deletion shows an error and does not report success. Future database tables and storage objects
-owned by a user must have an explicit cleanup policy before being added to this deletion flow.
-Existing access tokens expire naturally even after sessions are revoked; sensitive future APIs
-must check the live user/session rather than relying on a JWT signature alone.
-
-Verify on a disposable test account: cancel deletion and confirm the account still works, then
-confirm deletion and verify the account can no longer sign in. Password tests should confirm that
-an incorrect current password fails and that only the new password works after a successful change.
-
-```ts
-const auth = useAuthStore()
-await auth.signIn(email, password)
-await auth.signOut()
-```
-
-```ts
-import { storeToRefs } from 'pinia'
-import { useAuthStore } from '@/stores/auth'
-
-const { user } = storeToRefs(useAuthStore())
-```
-
-Run `npm test` for profile validation and the account lifecycle tests. They exercise the auth store and
-Supabase SDK with isolated HTTP fixtures and never contact a real project. To verify the live integration
-after configuring credentials: create and confirm an account, edit the name, reload, request an email
-change, confirm it, and sign out.
-
-### Typed queries
-
-`src/types/database.types.ts` is an empty placeholder, so TypeScript will reject table names until you generate the real types from your schema:
-
-```bash
-npx supabase login
-```
-
-```bash
-npx supabase gen types typescript --project-id your-project-ref > src/types/database.types.ts
-```
-
-On Windows, run the second command from Command Prompt, Git Bash or PowerShell 7+: the older Windows PowerShell 5.1 saves `>` output as UTF-16, which Vite and ESLint can't parse. Re-run it whenever the schema changes.
-
-### Offline behaviour
-
-The service worker caches the app's own files only. Requests to Supabase always go to the network, so data is not available offline unless you add caching for it deliberately.
-
-> **TODO:** document the database schema, RLS policies and auth providers once they exist.
-
-## Customising the template
-
-| To change…        | Edit                                                                                                                                    |
-| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| App name          | `index.html` (`<title>`, description), the `manifest` block in `vite.config.ts`, `src/views/HomeView.vue`, and `name` in `package.json` |
-| Colours and glass | The variables at the top of `src/assets/main.css` (light values first, dark overrides below)                                            |
-| Browser/OS chrome | `theme-color` tags in `index.html`; `theme_color` and `background_color` in `vite.config.ts`                                            |
-| Navigation items  | The `items` list in `src/components/BottomNav.vue`, plus a route in `src/router/index.ts` and an icon in `src/components/AppIcon.vue`   |
-| Page content      | The files in `src/views/`                                                                                                               |
-
-## Architecture
-
-> **TODO:** describe how the app is put together — main data flows, key stores, how the client talks to Supabase, and any decisions worth recording.
-
-## Deployment
-
-`npm run build` produces a static site in `dist/` that any static host can serve. Whatever the host, three things matter:
-
-- **HTTPS** — required for the service worker and for installation.
-- **SPA fallback** — the router uses clean URLs (`/settings`, not `/#/settings`), so the host must serve `index.html` for unknown paths. Most hosts have a setting or a rewrite rule for this.
-- **Environment variables** — set `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` in the host's build settings; they are read at build time.
-
-The production deployment process, including the hosting provider, production URL and release workflow, is tracked in [issue #20 (RF-19)](https://github.com/ValkorProjects/RendaFacil-2/issues/20).
-
-## Troubleshooting
-
-**The browser keeps showing an old version on `localhost`.** A service worker from an earlier session is still serving cached files. Open DevTools → **Application → Service workers → Unregister**, then reload. To keep service workers out of development altogether, set `devOptions.enabled` to `false` in `vite.config.ts` (the app will then only be installable from a production build).
-
-**No install option appears.** Check that the page is on HTTPS or `localhost`, that it isn't already installed, and that you're not in a private/incognito window.
-
-**Access and account creation are unavailable.** The profile page shows this notice if either Supabase
-environment variable is missing. Set both `VITE_SUPABASE_URL` and
-`VITE_SUPABASE_PUBLISHABLE_KEY` in `.env` to the values from your project, then restart the dev
-server. Private pages remain inaccessible until you sign in; public pages such as the privacy policy
-remain available.
-
-## Contributing
-
-1. Open pull requests against `dev` and reference the related issue with `Refs #N`. The `main` branch receives `dev` when a release is ready.
-2. Close the issue only after the pull request has been merged and its acceptance criteria have been verified. If GitHub does not close it automatically, close it manually.
-3. Before opening a pull request, run `npm run lint` and `npm run type-check`.
-
-## License
-
-> **TODO:** choose a license, or state that the project is proprietary.
+**Acesso e cadastro de contas estão indisponíveis.** O perfil mostra esse aviso quando falta uma das
+variáveis do Supabase. Configure `VITE_SUPABASE_URL` e `VITE_SUPABASE_PUBLISHABLE_KEY` com os valores
+do seu projeto no `.env` e reinicie o servidor. Se os valores de exemplo ou credenciais inválidas
+estiverem preenchidos, o formulário pode aparecer, mas a autenticação não funcionará. Sem uma sessão,
+as telas privadas ficam inacessíveis; a política de privacidade continua pública.
