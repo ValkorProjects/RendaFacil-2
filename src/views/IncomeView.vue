@@ -14,7 +14,6 @@ import {
   incomeEntryWarnings,
   type DependentIncome,
   type IncomeCategory,
-  type RegisteredDependent,
   type RegisteredIncomeEntry,
   useIncomeStore,
 } from '@/stores/income'
@@ -39,29 +38,28 @@ const dependentDeduction = parametros(2026).dependente
 const editingRegistrationId = ref<number | null>(null)
 const confirmingDeleteId = ref<number | null>(null)
 const editingIncomes = ref<RegisteredIncomeEntry[]>([])
-const editingDependents = ref<RegisteredDependent[]>([])
-const editingAlimony = ref('')
 const salaryErrors = ref<Record<number, string>>({})
 
-const draftWarnings = (income: RegisteredIncomeEntry) =>
-  incomeEntryWarnings(
-    income,
-    incomeStore.draftHasDependents ? incomeStore.draftDependents.length : 0,
-    incomeStore.draftAlimony,
-  )
-const editingWarnings = (income: RegisteredIncomeEntry | undefined) =>
-  income ? incomeEntryWarnings(income, editingDependents.value.length, editingAlimony.value) : []
+// The payslip checks use the declaration's dependents and alimony, whichever source it is.
+const incomeWarnings = (income: RegisteredIncomeEntry | undefined) =>
+  income
+    ? incomeEntryWarnings(
+        income,
+        incomeStore.household.dependents.length,
+        incomeStore.household.alimonyPaid,
+      )
+    : []
 
 const fillFromSalary = (id: number) => {
   salaryErrors.value[id] = incomeStore.fillDraftIncomeFromSalary(id)
 }
 
 const updateDependentCount = (event: Event) => {
-  incomeStore.setDraftDependentCount(Number((event.target as HTMLInputElement).value))
+  incomeStore.setDependentCount(Number((event.target as HTMLInputElement).value))
 }
 
 const updateHasDependents = (event: Event) => {
-  incomeStore.setDraftHasDependents((event.target as HTMLInputElement).checked)
+  incomeStore.setHasDependents((event.target as HTMLInputElement).checked)
 }
 
 const setConfirmingDelete = (registrationId: number, open: boolean) => {
@@ -76,21 +74,16 @@ const startInlineEdit = (registrationId: number) => {
   confirmingDeleteId.value = null
   editingRegistrationId.value = registrationId
   editingIncomes.value = registration.incomes.map((income) => ({ ...income }))
-  editingDependents.value = registration.dependents.map((dependent) => ({ ...dependent }))
-  editingAlimony.value = registration.alimonyPaid
 }
 
 const cancelInlineEdit = () => {
   editingRegistrationId.value = null
   editingIncomes.value = []
-  editingDependents.value = []
-  editingAlimony.value = ''
 }
 
 const canSaveInlineEdit = computed(
   () =>
-    (editingIncomes.value.some((income) => cents(income.amount) > 0) ||
-      editingDependents.value.some((dependent) => cents(dependent.amount) > 0)) &&
+    editingIncomes.value.some((income) => cents(income.amount) > 0) &&
     editingIncomes.value.every((income) => !incomeEntryError(income)),
 )
 
@@ -103,19 +96,12 @@ const updateEditingIncome = (
   if (income) income[field] = String(value)
 }
 
-const updateEditingDependentAmount = (index: number, amount: string | number) => {
-  const dependent = editingDependents.value[index]
-  if (dependent) dependent.amount = String(amount)
-}
-
 const saveInlineEdit = () => {
   if (editingRegistrationId.value === null || !canSaveInlineEdit.value) return
 
   incomeStore.updateRegistration({
     id: editingRegistrationId.value,
     incomes: editingIncomes.value.filter((income) => cents(income.amount) > 0),
-    dependents: editingDependents.value,
-    alimonyPaid: editingAlimony.value,
   })
   cancelInlineEdit()
 }
@@ -187,9 +173,7 @@ const saveIncomeAndReturn = () => {
                   @update:open="setConfirmingDelete(registration.id, $event)"
                   @confirm="incomeStore.removeRegistration(registration.id)"
                 >
-                  <p>
-                    Os rendimentos, os dependentes e a pensão deste cadastro saem da estimativa.
-                  </p>
+                  <p>Os rendimentos deste cadastro saem da estimativa.</p>
                 </ConfirmDelete>
               </div>
             </div>
@@ -251,7 +235,7 @@ const saveIncomeAndReturn = () => {
                 </p>
                 <template v-if="editingRegistrationId === registration.id">
                   <p
-                    v-for="warning in editingWarnings(editingIncomes[index])"
+                    v-for="warning in incomeWarnings(editingIncomes[index])"
                     :key="warning"
                     class="field-warning"
                     role="status"
@@ -259,44 +243,6 @@ const saveIncomeAndReturn = () => {
                     {{ warning }}
                   </p>
                 </template>
-              </div>
-              <div
-                v-for="(dependent, index) in registration.dependents"
-                :key="dependent.id"
-                class="saved-entry"
-              >
-                <span>{{ dependentIncomeLabels[dependent.incomeType] }}</span>
-                <Money3Component
-                  v-if="
-                    editingRegistrationId === registration.id && dependent.incomeType !== 'none'
-                  "
-                  :model-value="editingDependents[index]?.amount ?? ''"
-                  class="saved-money-input"
-                  v-bind="moneyConfig"
-                  inputmode="numeric"
-                  aria-label="Editar valor do rendimento do dependente"
-                  @update:model-value="updateEditingDependentAmount(index, $event)"
-                />
-                <strong v-else-if="dependent.incomeType !== 'none'">{{
-                  formatCurrency(cents(dependent.amount))
-                }}</strong>
-              </div>
-              <div
-                v-if="
-                  editingRegistrationId === registration.id || cents(registration.alimonyPaid) > 0
-                "
-                class="saved-entry"
-              >
-                <span>Pensão alimentícia paga por mês</span>
-                <Money3Component
-                  v-if="editingRegistrationId === registration.id"
-                  v-model="editingAlimony"
-                  class="saved-money-input"
-                  v-bind="moneyConfig"
-                  inputmode="numeric"
-                  aria-label="Editar pensão alimentícia paga por mês"
-                />
-                <strong v-else>{{ formatCurrency(cents(registration.alimonyPaid)) }}</strong>
               </div>
             </div>
           </article>
@@ -407,7 +353,7 @@ const saveIncomeAndReturn = () => {
               {{ incomeEntryError(income) }}
             </p>
             <p
-              v-for="warning in draftWarnings(income)"
+              v-for="warning in incomeWarnings(income)"
               :key="warning"
               class="field-warning"
               role="status"
@@ -439,6 +385,10 @@ const saveIncomeAndReturn = () => {
         <div class="toggle-row">
           <div>
             <strong>Possui dependentes?</strong>
+            <p>
+              Valem para a declaração inteira: informe cada dependente uma vez só, mesmo com mais de
+              uma fonte de renda. As mudanças contam na hora, sem precisar de "Adicionar".
+            </p>
             <p>Adicione as informações de renda de cada dependente.</p>
             <p>
               No modelo completo, cada dependente deduz {{ formatCurrency(dependentDeduction) }} por
@@ -447,7 +397,7 @@ const saveIncomeAndReturn = () => {
           </div>
           <label class="switch">
             <input
-              :checked="incomeStore.draftHasDependents"
+              :checked="incomeStore.hasDependents"
               type="checkbox"
               @change="updateHasDependents"
             />
@@ -456,11 +406,11 @@ const saveIncomeAndReturn = () => {
           </label>
         </div>
 
-        <div v-if="incomeStore.draftHasDependents" class="dependents-content">
+        <div v-if="incomeStore.hasDependents" class="dependents-content">
           <label class="field-label" for="dependent-count">Quantos dependentes?</label>
           <input
             id="dependent-count"
-            :value="incomeStore.draftDependentCount"
+            :value="incomeStore.dependents.length"
             class="field-control count-control"
             type="number"
             min="0"
@@ -469,9 +419,9 @@ const saveIncomeAndReturn = () => {
             @input="updateDependentCount"
           />
 
-          <div v-if="incomeStore.draftDependents.length" class="dependent-list">
+          <div v-if="incomeStore.dependents.length" class="dependent-list">
             <article
-              v-for="(dependent, index) in incomeStore.draftDependents"
+              v-for="(dependent, index) in incomeStore.dependents"
               :key="dependent.id"
               class="dependent-card"
             >
@@ -529,13 +479,17 @@ const saveIncomeAndReturn = () => {
           Só deduz a pensão fixada por decisão judicial, acordo homologado na Justiça ou escritura
           pública. A pensão que um dependente recebe fica no campo dele, acima.
         </p>
+        <p class="field-help">
+          Informe o total pago por mês uma vez só: vale para a declaração inteira, não para cada
+          fonte de renda.
+        </p>
         <label class="field-label" for="alimony-amount">Valor mensal</label>
         <Money3Component
           id="alimony-amount"
           class="field-control currency-input"
           inputmode="numeric"
           autocomplete="off"
-          v-model="incomeStore.draftAlimony"
+          v-model="incomeStore.alimonyPaid"
           v-bind="moneyConfig"
         />
       </section>
@@ -561,14 +515,14 @@ const saveIncomeAndReturn = () => {
               Total anual de Rendimentos Isentos
               <small>Pensão alimentícia</small>
             </dt>
-            <dd>{{ formatCurrency(incomeStore.summaryExemptTotal) }}</dd>
+            <dd>{{ formatCurrency(incomeStore.exemptTotal) }}</dd>
           </div>
           <div>
             <dt>
               Dependentes para dedução
-              <small>Cadastros salvos + este formulário</small>
+              <small>Valem para a declaração inteira</small>
             </dt>
-            <dd>{{ incomeStore.summaryDependentCount }}</dd>
+            <dd>{{ incomeStore.dependentCount }}</dd>
           </div>
         </dl>
       </footer>
