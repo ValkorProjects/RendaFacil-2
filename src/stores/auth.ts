@@ -5,8 +5,10 @@ import { getSupabase, isSupabaseConfigured } from '@/lib/supabase'
 import {
   authErrorMessage,
   normalizeProfile,
+  readAuthRedirect,
   validateProfile,
   validatePasswordChange,
+  type AuthRedirectNotice,
   type ProfileFields,
 } from '@/utils/profile'
 import { useIncomeStore } from '@/stores/income'
@@ -24,6 +26,17 @@ export const useAuthStore = defineStore('auth', () => {
 
   const profileRedirectUrl = () =>
     new URL(`${import.meta.env.BASE_URL}user`, window.location.origin).href
+
+  // Result of an e-mail link (expired link, confirmed e-mail), read before the Supabase client
+  // consumes the URL. The profile view shows it once and removes the error from the URL.
+  const redirectNotice = ref<AuthRedirectNotice | null>(
+    typeof window !== 'undefined' && window.location?.href
+      ? readAuthRedirect(window.location.href)
+      : null,
+  )
+  const clearRedirectNotice = () => {
+    redirectNotice.value = null
+  }
 
   // Fires once with the persisted session, then again on every sign-in/out.
   if (isSupabaseConfigured) {
@@ -82,7 +95,11 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function resendConfirmation(email: string) {
-    const { error } = await getSupabase().auth.resend({ type: 'signup', email: email.trim() })
+    const { error } = await getSupabase().auth.resend({
+      type: 'signup',
+      email: email.trim(),
+      options: { emailRedirectTo: profileRedirectUrl() },
+    })
     if (error) throw error
   }
 
@@ -173,5 +190,7 @@ export const useAuthStore = defineStore('auth', () => {
     requestPasswordReset,
     resetPassword,
     recoveryPending,
+    redirectNotice,
+    clearRedirectNotice,
   }
 })

@@ -71,6 +71,11 @@ export function authErrorMessage(error: unknown): string {
     return 'Entre novamente na sua conta e tente trocar a senha.'
   }
 
+  // Link de confirmação ou de recuperação vencido ou já usado (volta na URL do app).
+  if (codes.includes('otp_expired')) {
+    return 'Este link expirou ou já foi usado. Peça um novo em “Esqueci minha senha” ou “Reenviar confirmação de e-mail”.'
+  }
+
   if (
     codes.includes('user_not_found') ||
     codes.includes('bad_jwt') ||
@@ -97,6 +102,36 @@ export function authErrorMessage(error: unknown): string {
   }
 
   return 'Não foi possível concluir a solicitação. Tente novamente mais tarde.'
+}
+
+export interface AuthRedirectNotice {
+  kind: 'error' | 'success'
+  message: string
+}
+
+// Resultado de um link de e-mail do Supabase (confirmação ou recuperação de senha), lido da URL
+// para onde o link volta. O erro vem no hash (fluxo implícito) ou na query (fluxo PKCE).
+export function readAuthRedirect(url: string): AuthRedirectNotice | null {
+  const { hash, search } = new URL(url)
+  const params = new URLSearchParams(hash.replace(/^#/, ''))
+  new URLSearchParams(search).forEach((value, key) => {
+    if (!params.has(key)) params.set(key, value)
+  })
+
+  const errorCode = params.get('error_code') ?? params.get('error')
+  if (errorCode) {
+    return {
+      kind: 'error',
+      message: authErrorMessage({
+        error_code: errorCode,
+        error_description: params.get('error_description') ?? '',
+      }),
+    }
+  }
+  if (params.get('type') === 'signup' && params.has('access_token')) {
+    return { kind: 'success', message: 'Seu e-mail foi confirmado.' }
+  }
+  return null
 }
 
 export function validatePasswordChange(current: string, password: string, confirmation: string) {
