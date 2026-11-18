@@ -16,6 +16,12 @@ const router = createRouter({
       component: () => import('@/views/UserView.vue'),
     },
     {
+      path: '/privacidade',
+      name: 'privacy',
+      component: () => import('@/views/PrivacyView.vue'),
+      meta: { public: true },
+    },
+    {
       path: '/income',
       name: 'income',
       component: () => import('@/views/IncomeView.vue'),

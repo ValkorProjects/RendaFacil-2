@@ -276,8 +276,6 @@ npx supabase login
 npx supabase gen types typescript --project-id seu-project-ref > src/types/database.types.ts
 ```
 
-No Windows, rode o segundo comando no Prompt de Comando, no Git Bash ou no PowerShell 7+. O Windows PowerShell 5.1 salva a saída de `>` em UTF-16, e o Vite e o ESLint não conseguem ler o arquivo. Gere os tipos de novo sempre que o banco mudar.
-
 ### Funcionamento offline
 
 O app guarda em cache apenas os próprios arquivos. As consultas ao Supabase sempre vão para a rede, então os dados não ficam disponíveis offline.

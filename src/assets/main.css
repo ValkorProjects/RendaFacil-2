@@ -12,6 +12,10 @@
   --color-accent: #0062e6;
   --color-on-accent: #fff;
   --color-danger: #b42332;
+  --color-success: #14653d;
+  --color-on-danger: #fff;
+  --color-overlay: rgb(16 24 40 / 0.6);
+  --color-shadow: rgb(0 0 0 / 0.27);
 
   /* Soft colour fields behind the UI: they are what the glass surfaces blur. */
   --blob-1: rgb(52 211 153 / 0.5);
@@ -38,6 +42,10 @@
     --color-accent: #6cb2ff;
     --color-on-accent: #06101f;
     --color-danger: #ffb4bc;
+    --color-success: #8ae0b0;
+    --color-on-danger: #06101f;
+    --color-overlay: rgb(16 24 40 / 0.6);
+    --color-shadow: rgb(0 0 0 / 0.27);
 
     --blob-1: rgb(16 185 129 / 0.32);
     --blob-2: rgb(59 130 246 / 0.38);
