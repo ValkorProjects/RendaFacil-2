@@ -1,5 +1,5 @@
 <script setup lang="ts">
-export type IconName = 'home' | 'income' | 'user' | 'settings' | 'info'
+export type IconName = 'home' | 'income' | 'deductibles' | 'user' | 'settings' | 'info'
 
 defineProps<{
   name: IconName
@@ -23,6 +23,11 @@ defineProps<{
       <path d="M4 19V5M4 19h16" />
       <path d="m7 15 3-3 2 2 5-6" />
       <path d="M14 8h3v3" />
+    </template>
+    <template v-else-if="name === 'deductibles'">
+      <path d="M5 4h14v16H5z" />
+      <path d="M8 8h8M8 12h8M8 16h4" />
+      <path d="m15 15 1.5 1.5L20 13" />
     </template>
     <template v-else-if="name === 'user'">
       <circle cx="12" cy="8" r="4" />

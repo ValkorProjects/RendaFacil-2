@@ -2,10 +2,13 @@ import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import {
   calcularAjusteAnual,
+  calcularEfeitos,
   calcularFolhaMensal,
+  montarEntrada,
   parametros,
+  type DadosDeclaracao,
   type Entrada,
-  type Fonte,
+  type RegistroDespesa,
   type Resultado,
   type ResultadoMensal,
 } from '@/irpf'
@@ -21,6 +24,16 @@ export interface RegisteredDependent {
   id: number
   incomeType: DependentIncome
   amount: string
+  name?: string
+  emOutraDeclaracao?: boolean
+}
+
+export interface RegisteredExpense extends RegistroDespesa {
+  id: number
+  data: string
+  descricao: string
+  recebedor: string
+  pensaoIniciouEm2026: boolean
 }
 
 export interface RegisteredIncomeEntry {
@@ -36,8 +49,6 @@ export interface IncomeRegistration {
   id: number
   incomes: RegisteredIncomeEntry[]
   dependents: RegisteredDependent[]
-  // Court-ordered alimony paid per month, deducted in the full model
-  alimonyPaid: string
 }
 
 // The tax engine's result, or why it could not calculate one.
@@ -69,14 +80,13 @@ const PAYROLL_TOLERANCE = 10
 export const payrollEstimate = (
   entry: RegisteredIncomeEntry,
   dependents: number,
-  alimonyPaid: string,
 ): ResultadoMensal | null => {
   if (entry.category !== 'clt' || cents(entry.amount) === 0) return null
   try {
     return calcularFolhaMensal({
       bruto: cents(entry.amount),
       dependentes: dependents,
-      pensao: cents(alimonyPaid),
+      pensao: 0,
     })
   } catch {
     return null
@@ -86,12 +96,8 @@ export const payrollEstimate = (
 // Warnings (never blocking) when the typed INSS or income tax doesn't match the payslip
 // calculation. The informe de rendimentos is what counts, and it can differ for real reasons:
 // férias, a second employer sharing the INSS ceiling, extra deductions.
-export const incomeEntryWarnings = (
-  entry: RegisteredIncomeEntry,
-  dependents: number,
-  alimonyPaid: string,
-): string[] => {
-  const folha = payrollEstimate(entry, dependents, alimonyPaid)
+export const incomeEntryWarnings = (entry: RegisteredIncomeEntry, dependents: number): string[] => {
+  const folha = payrollEstimate(entry, dependents)
   if (!folha) return []
   const warnings: string[] = []
   if (entry.inss.trim() && cents(entry.inss) > folha.inss + PAYROLL_TOLERANCE) {
@@ -101,7 +107,7 @@ export const incomeEntryWarnings = (
   }
   if (entry.irrf.trim() && Math.abs(cents(entry.irrf) - folha.irrf) > PAYROLL_TOLERANCE) {
     warnings.push(
-      `O IR retido informado (${formatCurrency(cents(entry.irrf))}) difere do estimado pela tabela da folha (${formatCurrency(folha.irrf)}). Férias, 13º ou deduções extras podem explicar a diferença; confira o holerite.`,
+      `O IR retido informado (${formatCurrency(cents(entry.irrf))}) difere do estimado pela tabela da folha (${formatCurrency(folha.irrf)}). Pensão descontada em folha, férias, 13º ou outras deduções podem explicar a diferença; confira o holerite.`,
     )
   }
   return warnings
@@ -130,7 +136,6 @@ export interface PayrollRow {
   informado: { bruto: number; inss: number; irrf: number }
   dependentes: number
   deducaoDependentes: number
-  pensao: number
   folha: ResultadoMensal | null
 }
 
@@ -139,7 +144,7 @@ export const buildPayrollRows = (registrations: readonly IncomeRegistration[]): 
     registration.incomes
       .filter((income) => cents(income.amount) > 0)
       .map((income) => {
-        const dependentes = registration.dependents.length
+        const dependentes = countDeclaredDependents(registration.dependents)
         return {
           id: `${registration.id}-${income.id}`,
           label: incomeCategoryLabels[income.category],
@@ -150,51 +155,83 @@ export const buildPayrollRows = (registrations: readonly IncomeRegistration[]): 
           },
           dependentes,
           deducaoDependentes: dependentes * parametros(2026).mensal.dependente,
-          pensao: cents(registration.alimonyPaid),
-          folha: payrollEstimate(income, dependentes, registration.alimonyPaid),
+          folha: payrollEstimate(income, dependentes),
         }
       }),
   )
 
 const isTaxableDependentIncome = (dependent: RegisteredDependent) =>
   dependent.incomeType === 'estagio' || dependent.incomeType === 'outros'
+const isDeclaredDependent = (dependent: RegisteredDependent) => !dependent.emOutraDeclaracao
+export const countDeclaredDependents = (dependents: readonly RegisteredDependent[]) =>
+  dependents.filter(isDeclaredDependent).length
 
-// Converts the monthly values on the income screen into the engine's annual input. Every
-// dependent counts for the deduction; their taxable income (internship, other) is added to the
-// declaration with nothing withheld, and alimony they receive is exempt.
-export const buildTaxInput = (registrations: readonly IncomeRegistration[]): Entrada => ({
-  fontes: registrations.flatMap((registration): Fonte[] => [
+// Converts the saved income and expense entries into the engine's declaration model.
+export const buildDeclarationData = (
+  registrations: readonly IncomeRegistration[],
+  expenses: readonly RegisteredExpense[] = [],
+): DadosDeclaracao => {
+  const dependentes = registrations.flatMap((registration) =>
+    registration.dependents.map((dependent) => ({
+      id: String(dependent.id),
+      em_outra_declaracao: Boolean(dependent.emOutraDeclaracao),
+    })),
+  )
+
+  const fontes = registrations.flatMap((registration): DadosDeclaracao['fontes'][number][] => [
     ...registration.incomes.map((income) => ({
-      rendimentos: annualize(cents(income.amount)),
-      previdencia: annualize(cents(income.inss)),
-      irrf: annualize(cents(income.irrf)),
+      dependente_id: null,
+      rendimentos_centavos: annualize(cents(income.amount)),
+      previdencia_centavos: annualize(cents(income.inss)),
+      irrf_centavos: annualize(cents(income.irrf)),
     })),
-    ...registration.dependents.filter(isTaxableDependentIncome).map((dependent) => ({
-      rendimentos: annualize(cents(dependent.amount)),
-      previdencia: 0,
-      irrf: 0,
-    })),
-  ]),
-  dependentes: registrations.reduce(
-    (total, registration) => total + registration.dependents.length,
-    0,
-  ),
-  pensoes: registrations.reduce(
-    (total, registration) => total + annualize(cents(registration.alimonyPaid)),
-    0,
-  ),
-  // TODO(RF-13): there is no expenses screen yet, so health and education count as zero. When it
-  // lands, fill `saude` and `educacao` from the saved expenses (`avaliarDespesa` in
-  // src/irpf/entrada.ts already decides what deducts), and drop `alimonyPaid` below: alimony paid
-  // becomes an expense with its legal-basis confirmation, entered once there (RF-12 says so).
-  saude: [],
-  educacao: [],
-})
+    ...registration.dependents
+      .filter((dependent) => isTaxableDependentIncome(dependent) && isDeclaredDependent(dependent))
+      .map((dependent) => ({
+        dependente_id: String(dependent.id),
+        rendimentos_centavos: annualize(cents(dependent.amount)),
+        previdencia_centavos: 0,
+        irrf_centavos: 0,
+      })),
+  ])
+
+  return {
+    fontes,
+    dependentes,
+    despesas: expenses.map(
+      ({
+        categoria,
+        tipo,
+        beneficiario,
+        dependente_id,
+        valor_centavos,
+        reembolso_centavos,
+        base_legal_ok,
+      }) => ({
+        categoria,
+        tipo,
+        beneficiario,
+        dependente_id,
+        valor_centavos,
+        reembolso_centavos,
+        base_legal_ok,
+      }),
+    ),
+  }
+}
+
+export const buildTaxInput = (
+  registrations: readonly IncomeRegistration[],
+  expenses: readonly RegisteredExpense[] = [],
+): Entrada => montarEntrada(buildDeclarationData(registrations, expenses))
 
 // No estimate without income. The engine rejects values it can't calculate exactly (for
 // example, amounts too large for integer cents) instead of returning a wrong number.
-export const estimateTax = (registrations: readonly IncomeRegistration[]): TaxEstimate | null => {
-  const input = buildTaxInput(registrations)
+export const estimateTax = (
+  registrations: readonly IncomeRegistration[],
+  expenses: readonly RegisteredExpense[] = [],
+): TaxEstimate | null => {
+  const input = buildTaxInput(registrations, expenses)
   if (!input.fontes.some((fonte) => fonte.rendimentos > 0)) return null
   try {
     return { ok: true, result: calcularAjusteAnual(input) }
@@ -220,13 +257,14 @@ export const dependentIncomeLabels: Record<DependentIncome, string> = {
 
 export const useIncomeStore = defineStore('income', () => {
   const registrations = ref<IncomeRegistration[]>([])
+  const expenses = ref<RegisteredExpense[]>([])
   let nextDraftId = 1
+  let nextExpenseId = 1
 
   const draftIncomes = ref<RegisteredIncomeEntry[]>([newIncomeEntry(nextDraftId++)])
   const draftHasDependents = ref(false)
   const draftDependentCount = ref(0)
   const draftDependents = ref<RegisteredDependent[]>([])
-  const draftAlimony = ref('')
   const draftEditingRegistrationId = ref<number | null>(null)
 
   const addRegistration = (registration: IncomeRegistration) => {
@@ -238,6 +276,13 @@ export const useIncomeStore = defineStore('income', () => {
   }
 
   const removeRegistration = (id: number) => {
+    const registration = registrations.value.find((item) => item.id === id)
+    if (registration) {
+      const dependentIds = new Set(registration.dependents.map((dependent) => String(dependent.id)))
+      expenses.value = expenses.value.filter(
+        (expense) => !expense.dependente_id || !dependentIds.has(expense.dependente_id),
+      )
+    }
     registrations.value = registrations.value.filter((registration) => registration.id !== id)
   }
 
@@ -245,6 +290,15 @@ export const useIncomeStore = defineStore('income', () => {
     const index = registrations.value.findIndex((item) => item.id === registration.id)
     if (index < 0) return
 
+    const previousIds = new Set(
+      registrations.value[index]?.dependents.map((dependent) => String(dependent.id)) ?? [],
+    )
+    const retainedIds = new Set(registration.dependents.map((dependent) => String(dependent.id)))
+    for (const id of previousIds) {
+      if (!retainedIds.has(id)) {
+        expenses.value = expenses.value.filter((expense) => expense.dependente_id !== id)
+      }
+    }
     registrations.value[index] = {
       ...registration,
       incomes: registration.incomes.map((income) => ({ ...income })),
@@ -260,7 +314,6 @@ export const useIncomeStore = defineStore('income', () => {
     draftDependents.value = registration.dependents.map((dependent) => ({ ...dependent }))
     draftHasDependents.value = registration.dependents.length > 0
     draftDependentCount.value = registration.dependents.length
-    draftAlimony.value = registration.alimonyPaid
     draftEditingRegistrationId.value = id
     return true
   }
@@ -277,8 +330,8 @@ export const useIncomeStore = defineStore('income', () => {
     try {
       const payroll = calcularFolhaMensal({
         bruto: cents(income.amount),
-        dependentes: draftHasDependents.value ? draftDependents.value.length : 0,
-        pensao: cents(draftAlimony.value),
+        dependentes: draftHasDependents.value ? countDeclaredDependents(draftDependents.value) : 0,
+        pensao: 0,
       })
       income.inss = formatMoneyInput(payroll.inss)
       income.irrf = formatMoneyInput(payroll.irrf)
@@ -307,7 +360,13 @@ export const useIncomeStore = defineStore('income', () => {
     draftDependentCount.value = safeCount
 
     while (draftDependents.value.length < safeCount) {
-      draftDependents.value.push({ id: nextDraftId++, incomeType: 'none', amount: '' })
+      draftDependents.value.push({
+        id: nextDraftId++,
+        incomeType: 'none',
+        amount: '',
+        name: '',
+        emOutraDeclaracao: false,
+      })
     }
     if (draftDependents.value.length > safeCount) draftDependents.value.splice(safeCount)
   }
@@ -318,7 +377,7 @@ export const useIncomeStore = defineStore('income', () => {
       0,
     )
     const dependentTotal = draftDependents.value.reduce((total, dependent) => {
-      if (dependent.incomeType === 'estagio' || dependent.incomeType === 'outros') {
+      if (isDeclaredDependent(dependent) && isTaxableDependentIncome(dependent)) {
         return total + cents(dependent.amount)
       }
       return total
@@ -330,7 +389,9 @@ export const useIncomeStore = defineStore('income', () => {
     annualize(
       draftDependents.value.reduce(
         (total, dependent) =>
-          dependent.incomeType === 'pensao' ? total + cents(dependent.amount) : total,
+          isDeclaredDependent(dependent) && dependent.incomeType === 'pensao'
+            ? total + cents(dependent.amount)
+            : total,
         0,
       ),
     ),
@@ -348,13 +409,26 @@ export const useIncomeStore = defineStore('income', () => {
     draftHasDependents.value = false
     draftDependentCount.value = 0
     draftDependents.value = []
-    draftAlimony.value = ''
     draftEditingRegistrationId.value = null
   }
 
   const clearAccountData = () => {
     registrations.value = []
+    expenses.value = []
     resetDraft()
+  }
+
+  const addExpense = (expense: Omit<RegisteredExpense, 'id'>) => {
+    expenses.value.push({ ...expense, id: nextExpenseId++ })
+  }
+
+  const updateExpense = (expense: RegisteredExpense) => {
+    const index = expenses.value.findIndex((item) => item.id === expense.id)
+    if (index >= 0) expenses.value[index] = { ...expense }
+  }
+
+  const removeExpense = (id: number) => {
+    expenses.value = expenses.value.filter((expense) => expense.id !== id)
   }
 
   const saveDraft = () => {
@@ -371,12 +445,11 @@ export const useIncomeStore = defineStore('income', () => {
             amount: dependent.incomeType === 'none' ? '' : dependent.amount,
           }))
         : [],
-      alimonyPaid: draftAlimony.value,
     }
 
     const registrationIndex = registrations.value.findIndex((item) => item.id === registration.id)
     if (registrationIndex >= 0) {
-      registrations.value[registrationIndex] = registration
+      updateRegistration(registration)
     } else {
       addRegistration(registration)
     }
@@ -398,7 +471,9 @@ export const useIncomeStore = defineStore('income', () => {
         total +
         registration.dependents.reduce(
           (subtotal, dependent) =>
-            dependent.incomeType !== 'none' ? subtotal + cents(dependent.amount) : subtotal,
+            isDeclaredDependent(dependent) && dependent.incomeType !== 'none'
+              ? subtotal + cents(dependent.amount)
+              : subtotal,
           0,
         ),
       0,
@@ -426,7 +501,7 @@ export const useIncomeStore = defineStore('income', () => {
         0,
       )
       const dependentTotal = registration.dependents.reduce((subtotal, dependent) => {
-        if (dependent.incomeType === 'estagio' || dependent.incomeType === 'outros') {
+        if (isDeclaredDependent(dependent) && isTaxableDependentIncome(dependent)) {
           return subtotal + cents(dependent.amount)
         }
         return subtotal
@@ -442,7 +517,9 @@ export const useIncomeStore = defineStore('income', () => {
         annualize(
           registration.dependents.reduce(
             (subtotal, dependent) =>
-              dependent.incomeType === 'pensao' ? subtotal + cents(dependent.amount) : subtotal,
+              isDeclaredDependent(dependent) && dependent.incomeType === 'pensao'
+                ? subtotal + cents(dependent.amount)
+                : subtotal,
             0,
           ),
         ),
@@ -454,7 +531,10 @@ export const useIncomeStore = defineStore('income', () => {
   const summaryExemptTotal = computed(() => exemptTotal.value + draftExemptTotal.value)
 
   const dependentCount = computed(() =>
-    registrations.value.reduce((total, registration) => total + registration.dependents.length, 0),
+    registrations.value.reduce(
+      (total, registration) => total + countDeclaredDependents(registration.dependents),
+      0,
+    ),
   )
 
   // What the form would add if saved now, so the summary updates while the user types.
@@ -462,13 +542,22 @@ export const useIncomeStore = defineStore('income', () => {
     id: 0,
     incomes: draftIncomes.value,
     dependents: draftHasDependents.value ? draftDependents.value : [],
-    alimonyPaid: draftAlimony.value,
   }))
 
   const summaryDependentCount = computed(
-    () => dependentCount.value + draftRegistration.value.dependents.length,
+    () => dependentCount.value + countDeclaredDependents(draftRegistration.value.dependents),
   )
-  const taxEstimate = computed(() => estimateTax(registrations.value))
+  const declarationData = computed(() => buildDeclarationData(registrations.value, expenses.value))
+  const dependents = computed(() =>
+    registrations.value.flatMap((registration) =>
+      registration.dependents.map((dependent) => ({
+        ...dependent,
+        id: String(dependent.id),
+        registrationId: registration.id,
+      })),
+    ),
+  )
+  const taxEstimate = computed(() => estimateTax(registrations.value, expenses.value))
   const summaryInssWarning = computed(() =>
     inssCeilingWarning([...registrations.value, draftRegistration.value]),
   )
@@ -476,11 +565,16 @@ export const useIncomeStore = defineStore('income', () => {
     buildPayrollRows([...registrations.value, draftRegistration.value]),
   )
   const summaryTaxEstimate = computed(() =>
-    estimateTax([...registrations.value, draftRegistration.value]),
+    estimateTax([...registrations.value, draftRegistration.value], expenses.value),
   )
+  const deductionEffects = computed(() => calcularEfeitos(declarationData.value))
 
   return {
     registrations,
+    expenses,
+    dependents,
+    declarationData,
+    deductionEffects,
     items,
     taxableTotal,
     exemptTotal,
@@ -500,7 +594,6 @@ export const useIncomeStore = defineStore('income', () => {
     draftHasDependents,
     draftDependentCount,
     draftDependents,
-    draftAlimony,
     draftTaxableTotal,
     draftExemptTotal,
     canSaveDraft,
@@ -511,5 +604,8 @@ export const useIncomeStore = defineStore('income', () => {
     setDraftDependentCount,
     saveDraft,
     clearAccountData,
+    addExpense,
+    updateExpense,
+    removeExpense,
   }
 })

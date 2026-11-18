@@ -53,10 +53,11 @@ Em desenvolvimento, rumo ao MVP. As funcionalidades estão organizadas em issues
 | Pronto                                                                                | Em andamento ou planejado                                    |
 | ------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
 | Motor de cálculo do ajuste anual e da folha mensal, com testes de casos de referência | Questionário inicial com triagem                             |
-| Parâmetros fiscais de 2026                                                            | Persistência das rendas e dos dependentes no Supabase        |
-| Estrutura do banco e políticas RLS definidas em [`supabase/`](supabase/)              | Telas finais de Rendas, Dependentes e Dedutíveis             |
-| Tela de Rendas com estimativa do imposto (dados ainda só em memória)                  | Home com o resultado e o detalhe do cálculo                  |
-| Cadastro, login, perfil, consentimento e política de privacidade                      | Publicação da Edge Function de exclusão e deploy de produção |
+| Parâmetros fiscais de 2026                                                            | Questionário inicial com triagem                             |
+| Estrutura do banco e políticas RLS definidas em [`supabase/`](supabase/)              | Publicação da Edge Function de exclusão e deploy de produção |
+| Cadastro de rendimentos e dependentes com estimativa (dados ainda só em memória)      | Home com o resultado e o detalhe do cálculo                  |
+| Tela de Dedutíveis com cadastro, efeitos e barra de educação (dados em memória)       | Persistência das rendas, dependentes e despesas no Supabase  |
+| Cadastro, login, perfil, consentimento e política de privacidade                      |                                                              |
 | Documentação do cálculo                                                               |                                                              |
 
 Fora do escopo do MVP: aluguel recebido, autônomo, MEI ou PJ (carnê-leão), aposentadoria, ganho de capital, bolsa de valores, renda do exterior e previdência privada. A lista completa está na [seção 9 da documentação do cálculo](docs/calculo-irpf-2026.md#9-fora-do-escopo-do-mvp).

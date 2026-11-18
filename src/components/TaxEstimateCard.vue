@@ -51,7 +51,8 @@ const otherModel = computed(() =>
       </h2>
       <p class="line">
         Supõe o mesmo salário em todos os meses. Na declaração vale o informe de rendimentos; aqui
-        dá para conferir os números do holerite, com valores menores.
+        dá para conferir os números do holerite, com valores menores. A pensão cadastrada em
+        Dedutíveis entra na estimativa anual, não nesta simulação da folha.
       </p>
       <section
         v-for="row in payroll"
@@ -95,11 +96,6 @@ const otherModel = computed(() =>
                 <tr class="deduction">
                   <th scope="row">Dependentes ({{ row.dependentes }})</th>
                   <td>{{ formatCurrency(row.deducaoDependentes) }}</td>
-                  <td>—</td>
-                </tr>
-                <tr class="deduction">
-                  <th scope="row">Pensão alimentícia</th>
-                  <td>{{ formatCurrency(row.pensao) }}</td>
                   <td>—</td>
                 </tr>
                 <tr>
@@ -289,10 +285,8 @@ const otherModel = computed(() =>
       pode estar acima ou abaixo do real.
     </p>
     <p class="note">
-      Estimativa parcial: despesas de saúde e educação ainda não entram na conta, porque a tela de
-      dedutíveis ainda não existe. Todas as rendas informadas são tratadas como rendimentos
-      tributáveis; aluguéis, trabalho autônomo e aposentadoria têm regras próprias que ainda não são
-      calculadas.
+      Todas as rendas informadas são tratadas como rendimentos tributáveis; aluguéis, trabalho
+      autônomo e aposentadoria têm regras próprias que ainda não são calculadas.
     </p>
     <p class="note">
       Estimativa. Não substitui a declaração oficial nem a orientação de um contador.

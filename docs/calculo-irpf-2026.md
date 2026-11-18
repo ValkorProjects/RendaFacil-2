@@ -247,7 +247,7 @@ O catálogo fica em [`src/irpf/despesas.ts`](../src/irpf/despesas.ts). A chave d
 
 ## 8. Como usar o motor
 
-A API pública fica em [`src/irpf/index.ts`](../src/irpf/index.ts). As telas leem as linhas da declaração no Supabase e passam para o motor, sem fazer conta própria:
+A API pública fica em [`src/irpf/index.ts`](../src/irpf/index.ts). As telas convertem seus cadastros para linhas da declaração e passam para o motor, sem fazer conta própria. Atualmente, os cadastros de rendimentos e despesas ficam em memória; a persistência no Supabase ainda está planejada:
 
 ```ts
 import { calcularAjusteAnual, montarEntrada } from '@/irpf'
@@ -276,30 +276,31 @@ const resultado = calcularAjusteAnual({
 })
 ```
 
-- **Efeito de cada despesa (RF-07):** [`calcularEfeitos(dados)`](../src/irpf/efeitos.ts) devolve, para cada despesa, se ela deduz, quanto o imposto devido sobe sem ela, a parte da educação acima do limite e as mensagens da tela. Também devolve o efeito total e o uso do limite de educação por pessoa, para a barra. `previaEfeito(dados, rascunho)` faz a mesma conta para uma despesa ainda não salva, enquanto o valor é digitado. Cada cálculo escolhe o melhor modelo de novo, então os efeitos individuais não somam o total: no F5, 781,67 + 1.060,33 + 30,00 + 430,33 = 2.302,33, e o total é 2.356,67. O efeito total compara com a declaração sem saúde nem educação, mantendo a pensão; a pensão tem efeito individual, como as outras despesas. Quando uma pessoa tem mais de um recibo de educação acima do limite, os recibos consomem o limite na ordem da lista e o que passa dele cai nos últimos, de modo que a soma do que "não conta" é o excesso real da pessoa.
+- **Efeito de cada despesa (RF-07):** [`calcularEfeitos(dados)`](../src/irpf/efeitos.ts) devolve, para cada despesa, se ela deduz, quanto o imposto devido sobe sem ela, a parte da educação acima do limite e as mensagens da tela. Também devolve o efeito de saúde e educação em conjunto e o uso do limite de educação por pessoa, para a barra. `previaEfeito(dados, rascunho)` faz a mesma conta para uma despesa ainda não salva, enquanto o valor é digitado. Cada cálculo escolhe o melhor modelo de novo, então os efeitos individuais não somam o efeito conjunto: no F5, 781,67 + 1.060,33 + 30,00 + 430,33 = 2.302,33, e o total de saúde e educação é 2.356,67. A fórmula é `efeito_total = devido(sem saúde nem educação, mantendo a pensão) − devido(todas as despesas)`. A pensão tem seu efeito individual, mas é mantida nos dois lados da comparação do efeito conjunto. Quando uma pessoa tem mais de um recibo de educação acima do limite, os recibos consomem o limite na ordem da lista e o que passa dele cai nos últimos, de modo que a soma do que "não conta" é o excesso real da pessoa.
 - **Texto "não deduz" (RF-13):** as mensagens de `calcularEfeitos` já trazem o motivo. Para o formulário, `avaliarDespesa(despesa, dependentes)` e `TIPOS_DESPESA[tipo].rotulo` dão o mesmo motivo antes de salvar.
 - **Testes:** `npm test` roda os casos de referência do RF-08 (`src/irpf/__tests__/`), os da folha mensal e os testes ao lado do código (`*.test.ts`). O CI ([`.github/workflows/ci.yml`](../.github/workflows/ci.yml)) roda os testes, o lint, a formatação, o type-check e o build em todo PR para `dev` e `main`. Todo bug de cálculo encontrado vira um caso novo.
 
-### 8.1 Estimativa parcial na tela de Rendas
+### 8.1 Estimativa parcial nas telas
 
-Enquanto as telas de Rendas (RF-12), Dedutíveis (RF-13) e a Home (RF-14) não existem na forma final, a tela de cadastro de rendimentos já usa o motor, com os dados guardados só em memória:
+As telas de Rendas e Dedutíveis usam o motor, com os dados guardados só em memória:
 
-| Na tela (por mês)                                | No motor (por ano, × 12)                     |
-| ------------------------------------------------ | -------------------------------------------- |
-| Valor mensal de cada rendimento                  | `fontes[].rendimentos`                       |
-| INSS descontado no mês                           | `fontes[].previdencia`                       |
-| IR retido na fonte no mês                        | `fontes[].irrf`                              |
-| Renda tributável de dependente (estágio, outros) | uma fonte a mais, sem INSS nem IRRF          |
-| Pensão recebida por dependente                   | fica fora (isenta)                           |
-| Cada dependente, com ou sem renda                | `dependentes`                                |
-| Pensão alimentícia paga                          | `pensoes`                                    |
-| —                                                | `saude` e `educacao` vazios (sem tela ainda) |
+| Cadastro na tela                                  | No motor                                                |
+| ------------------------------------------------- | ------------------------------------------------------- |
+| Valor mensal de cada rendimento                   | `fontes[].rendimentos` (anualizado × 12)                |
+| INSS descontado no mês                            | `fontes[].previdencia` (anualizado × 12)                |
+| IR retido na fonte no mês                         | `fontes[].irrf` (anualizado × 12)                       |
+| Renda tributável de dependente (estágio, outros)  | uma fonte a mais, sem INSS nem IRRF                     |
+| Pensão recebida por dependente                    | fica fora (isenta)                                      |
+| Cada dependente não marcado em outra declaração   | `dependentes`                                           |
+| Pensão alimentícia anual cadastrada em Dedutíveis | `pensoes`                                               |
+| Despesas cadastradas de saúde e educação          | `saude` e `educacao`, com validação e limite por pessoa |
+| Pensão anual cadastrada em Dedutíveis             | `pensoes`; não é projetada na simulação mensal da folha |
 
 Para uma fonte CLT, a tela compara o INSS e o IR retido digitados com a folha mensal (`incomeEntryWarnings`) e avisa, sem bloquear, quando diferem mais de R$ 0,10 (INSS acima da tabela, IR retido diferente da tabela). Férias, 13º, um segundo empregador e deduções extras explicam diferenças legítimas, e o informe de rendimentos é o que vale. A visão **Mensal** do cartão mostra a conta da folha ao lado dos valores informados. Ela supõe o mesmo salário o ano todo; escolher um mês específico está como TODO em `TaxEstimateCard.vue`.
 
 Duas outras proteções, também sem bloquear: `inssCeilingWarning` avisa quando o INSS somado de todas as fontes passa do teto anual (12 × 988,09 = 11.857,08, critério do RF-12), o que acontece com mais de um empregador; e o cartão lista as categorias que não são CLT ("Tratado como salário: …"), porque aluguéis, autônomo/PJ e aposentadoria passam pelo motor como se fossem salário. Quem tem uma renda de PJ sem retenção, por exemplo, paga o carnê-leão mês a mês, e esse imposto ainda não é descontado da estimativa (seção 9).
 
-A conversão fica em `buildTaxInput`, em [`src/stores/income.ts`](../src/stores/income.ts). O botão "Calcular INSS e IR pelo salário" usa `calcularFolhaMensal` com os dependentes e a pensão do formulário. Todas as categorias de renda são tratadas como rendimento tributável; aluguéis, trabalho autônomo e aposentadoria têm regras próprias que ficam fora do MVP (seção 9), e o cartão da estimativa avisa isso.
+A conversão fica em `buildTaxInput` e `buildDeclarationData`, em [`src/stores/income.ts`](../src/stores/income.ts). O botão "Calcular INSS e IR pelo salário" usa `calcularFolhaMensal` com os dependentes válidos, sem presumir pensão mensal. A pensão anual é cadastrada uma única vez em Dedutíveis, com a confirmação da base legal, e só entra no ajuste da declaração; não é projetada na simulação mensal da folha, pois o total anual não informa como os pagamentos se distribuem pelos meses ou pelas fontes pagadoras. Todas as categorias de renda são tratadas como rendimento tributável; aluguéis, trabalho autônomo e aposentadoria têm regras próprias que ficam fora do MVP (seção 9), e o cartão da estimativa avisa isso.
 
 ## 9. Fora do escopo do MVP
 

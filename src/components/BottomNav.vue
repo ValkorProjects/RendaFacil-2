@@ -4,12 +4,18 @@ import { RouterLink, useRoute } from 'vue-router'
 import AppIcon, { type IconName } from '@/components/AppIcon.vue'
 
 // `name` is the route name from src/router/index.ts.
-const items: { name: string; label: string; icon: IconName }[] = [
-  { name: 'home', label: 'Home', icon: 'home' },
-  { name: 'income', label: 'Renda', icon: 'income' },
-  { name: 'user', label: 'Perfil', icon: 'user' },
-  { name: 'settings', label: 'Configurações', icon: 'settings' },
-  { name: 'info', label: 'Info', icon: 'info' },
+const items: { name: string; label: string; compactLabel: string; icon: IconName }[] = [
+  { name: 'home', label: 'Home', compactLabel: 'Home', icon: 'home' },
+  { name: 'income', label: 'Renda', compactLabel: 'Renda', icon: 'income' },
+  {
+    name: 'deductibles',
+    label: 'Dedutíveis',
+    compactLabel: 'Dedut.',
+    icon: 'deductibles',
+  },
+  { name: 'user', label: 'Perfil', compactLabel: 'Perfil', icon: 'user' },
+  { name: 'settings', label: 'Configurações', compactLabel: 'Ajustes', icon: 'settings' },
+  { name: 'info', label: 'Info', compactLabel: 'Info', icon: 'info' },
 ]
 
 const route = useRoute()
@@ -23,9 +29,17 @@ const activeIndex = computed(() => items.findIndex((item) => item.name === route
     :style="{ '--count': items.length, '--index': activeIndex }"
   >
     <span v-if="activeIndex >= 0" class="nav-indicator" aria-hidden="true" />
-    <RouterLink v-for="item in items" :key="item.name" :to="{ name: item.name }" class="nav-item">
+    <RouterLink
+      v-for="item in items"
+      :key="item.name"
+      :to="{ name: item.name }"
+      class="nav-item"
+      :aria-label="item.label"
+      :title="item.label"
+    >
       <AppIcon class="nav-icon" :name="item.icon" />
-      <span>{{ item.label }}</span>
+      <span class="nav-label">{{ item.label }}</span>
+      <span class="nav-label-compact">{{ item.compactLabel }}</span>
     </RouterLink>
   </nav>
 </template>
@@ -98,6 +112,20 @@ const activeIndex = computed(() => items.findIndex((item) => item.name === route
   height: 1.5rem;
 }
 
+.nav-label-compact {
+  display: none;
+}
+
+@media (max-width: 64rem) {
+  .nav-label {
+    display: none;
+  }
+
+  .nav-label-compact {
+    display: inline;
+  }
+}
+
 /* Desktop: wider island, icon and label side by side. */
 @media (min-width: 48rem) {
   .nav-island {
@@ -110,11 +138,27 @@ const activeIndex = computed(() => items.findIndex((item) => item.name === route
     gap: 0.5rem;
     min-height: 3rem;
     font-size: 0.9375rem;
+    min-width: 0;
+    white-space: nowrap;
   }
 
   .nav-icon {
     width: 1.25rem;
     height: 1.25rem;
+  }
+}
+
+@media (min-width: 64rem) {
+  .nav-island {
+    width: min(calc(100% - 2rem), 48rem);
+  }
+
+  .nav-label-compact {
+    display: none;
+  }
+
+  .nav-label {
+    display: inline;
   }
 }
 </style>

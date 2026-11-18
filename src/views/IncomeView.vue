@@ -8,6 +8,7 @@ import { parametros } from '@/irpf'
 import { cents, formatCurrency, moneyConfig } from '@/utils/currency'
 import {
   dependentIncomeLabels,
+  countDeclaredDependents,
   incomeCategoryLabels,
   incomeEntryError,
   incomeEntryWarnings,
@@ -38,17 +39,15 @@ const dependentDeduction = parametros(2026).dependente
 const editingRegistrationId = ref<number | null>(null)
 const editingIncomes = ref<RegisteredIncomeEntry[]>([])
 const editingDependents = ref<RegisteredDependent[]>([])
-const editingAlimony = ref('')
 const salaryErrors = ref<Record<number, string>>({})
 
 const draftWarnings = (income: RegisteredIncomeEntry) =>
   incomeEntryWarnings(
     income,
-    incomeStore.draftHasDependents ? incomeStore.draftDependents.length : 0,
-    incomeStore.draftAlimony,
+    incomeStore.draftHasDependents ? countDeclaredDependents(incomeStore.draftDependents) : 0,
   )
 const editingWarnings = (income: RegisteredIncomeEntry | undefined) =>
-  income ? incomeEntryWarnings(income, editingDependents.value.length, editingAlimony.value) : []
+  income ? incomeEntryWarnings(income, countDeclaredDependents(editingDependents.value)) : []
 
 const fillFromSalary = (id: number) => {
   salaryErrors.value[id] = incomeStore.fillDraftIncomeFromSalary(id)
@@ -69,14 +68,12 @@ const startInlineEdit = (registrationId: number) => {
   editingRegistrationId.value = registrationId
   editingIncomes.value = registration.incomes.map((income) => ({ ...income }))
   editingDependents.value = registration.dependents.map((dependent) => ({ ...dependent }))
-  editingAlimony.value = registration.alimonyPaid
 }
 
 const cancelInlineEdit = () => {
   editingRegistrationId.value = null
   editingIncomes.value = []
   editingDependents.value = []
-  editingAlimony.value = ''
 }
 
 const canSaveInlineEdit = computed(
@@ -107,7 +104,6 @@ const saveInlineEdit = () => {
     id: editingRegistrationId.value,
     incomes: editingIncomes.value.filter((income) => cents(income.amount) > 0),
     dependents: editingDependents.value,
-    alimonyPaid: editingAlimony.value,
   })
   cancelInlineEdit()
 }
@@ -252,7 +248,23 @@ const saveIncomeAndReturn = () => {
                 :key="dependent.id"
                 class="saved-entry"
               >
-                <span>{{ dependentIncomeLabels[dependent.incomeType] }}</span>
+                <span>
+                  {{ dependent.name?.trim() || `Dependente ${index + 1}` }} ·
+                  {{ dependentIncomeLabels[dependent.incomeType] }}
+                  <small v-if="dependent.emOutraDeclaracao">Em outra declaração</small>
+                </span>
+                <template v-if="editingRegistrationId === registration.id">
+                  <input
+                    v-model="editingDependents[index]!.name"
+                    class="saved-money-input"
+                    aria-label="Editar nome do dependente"
+                    placeholder="Nome (opcional)"
+                  />
+                  <label class="dependent-declaration">
+                    <input v-model="editingDependents[index]!.emOutraDeclaracao" type="checkbox" />
+                    Está na declaração de outra pessoa
+                  </label>
+                </template>
                 <Money3Component
                   v-if="
                     editingRegistrationId === registration.id && dependent.incomeType !== 'none'
@@ -267,23 +279,6 @@ const saveIncomeAndReturn = () => {
                 <strong v-else-if="dependent.incomeType !== 'none'">{{
                   formatCurrency(cents(dependent.amount))
                 }}</strong>
-              </div>
-              <div
-                v-if="
-                  editingRegistrationId === registration.id || cents(registration.alimonyPaid) > 0
-                "
-                class="saved-entry"
-              >
-                <span>Pensão alimentícia paga por mês</span>
-                <Money3Component
-                  v-if="editingRegistrationId === registration.id"
-                  v-model="editingAlimony"
-                  class="saved-money-input"
-                  v-bind="moneyConfig"
-                  inputmode="numeric"
-                  aria-label="Editar pensão alimentícia paga por mês"
-                />
-                <strong v-else>{{ formatCurrency(cents(registration.alimonyPaid)) }}</strong>
               </div>
             </div>
           </article>
@@ -383,8 +378,8 @@ const saveIncomeAndReturn = () => {
                 Calcular INSS e IR pelo salário
               </button>
               <p class="field-help">
-                Supõe o mesmo salário todos os meses e usa os dependentes e a pensão informados
-                abaixo.
+                Supõe o mesmo salário todos os meses e considera os dependentes. A pensão anual
+                cadastrada em Dedutíveis entra no ajuste da declaração, não nesta simulação mensal.
               </p>
             </template>
             <p v-if="salaryErrors[income.id]" class="field-error" role="alert">
@@ -464,6 +459,22 @@ const saveIncomeAndReturn = () => {
             >
               <div class="dependent-number">{{ String(index + 1).padStart(2, '0') }}</div>
               <div class="dependent-fields">
+                <label class="field-label" :for="`dependent-name-${dependent.id}`">
+                  Nome (opcional)
+                </label>
+                <input
+                  :id="`dependent-name-${dependent.id}`"
+                  v-model="dependent.name"
+                  class="field-control"
+                  autocomplete="off"
+                />
+                <label class="dependent-declaration">
+                  <input v-model="dependent.emOutraDeclaracao" type="checkbox" />
+                  Está na declaração de outra pessoa
+                </label>
+                <p v-if="dependent.emOutraDeclaracao" class="field-help">
+                  A renda e as despesas desta pessoa não entram nesta declaração.
+                </p>
                 <label class="field-label" :for="`dependent-type-${dependent.id}`">
                   Dependente {{ index + 1 }} · Tipo de renda
                 </label>
@@ -502,29 +513,6 @@ const saveIncomeAndReturn = () => {
           </div>
           <p v-else class="empty-state">Informe a quantidade para adicionar os dependentes.</p>
         </div>
-      </section>
-
-      <section class="form-section glass" aria-labelledby="alimony-title">
-        <div class="section-heading">
-          <div>
-            <p class="section-kicker">03</p>
-            <h2 id="alimony-title">Pensão alimentícia paga</h2>
-          </div>
-          <span class="section-status optional">Opcional</span>
-        </div>
-        <p class="field-help">
-          Só deduz a pensão fixada por decisão judicial, acordo homologado na Justiça ou escritura
-          pública. A pensão que um dependente recebe fica no campo dele, acima.
-        </p>
-        <label class="field-label" for="alimony-amount">Valor mensal</label>
-        <Money3Component
-          id="alimony-amount"
-          class="field-control currency-input"
-          inputmode="numeric"
-          autocomplete="off"
-          v-model="incomeStore.draftAlimony"
-          v-bind="moneyConfig"
-        />
       </section>
 
       <footer class="summary-card" aria-labelledby="summary-title">
@@ -897,6 +885,19 @@ select.field-control option {
 
 .dependent-fields {
   min-width: 0;
+}
+
+.dependent-declaration {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-block: 0.75rem;
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}
+
+.dependent-declaration input {
+  accent-color: var(--color-accent);
 }
 
 .exempt-note {
