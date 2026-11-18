@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { Money3Component } from 'v-money3'
+import ConfirmDelete from '@/components/ConfirmDelete.vue'
 import PageCard from '@/components/PageCard.vue'
 import TaxEstimateCard from '@/components/TaxEstimateCard.vue'
 import { parametros } from '@/irpf'
@@ -36,6 +37,7 @@ const router = useRouter()
 const incomeStore = useIncomeStore()
 const dependentDeduction = parametros(2026).dependente
 const editingRegistrationId = ref<number | null>(null)
+const confirmingDeleteId = ref<number | null>(null)
 const editingIncomes = ref<RegisteredIncomeEntry[]>([])
 const editingDependents = ref<RegisteredDependent[]>([])
 const editingAlimony = ref('')
@@ -62,10 +64,16 @@ const updateHasDependents = (event: Event) => {
   incomeStore.setDraftHasDependents((event.target as HTMLInputElement).checked)
 }
 
+const setConfirmingDelete = (registrationId: number, open: boolean) => {
+  if (open) confirmingDeleteId.value = registrationId
+  else if (confirmingDeleteId.value === registrationId) confirmingDeleteId.value = null
+}
+
 const startInlineEdit = (registrationId: number) => {
   const registration = incomeStore.registrations.find((item) => item.id === registrationId)
   if (!registration) return
 
+  confirmingDeleteId.value = null
   editingRegistrationId.value = registrationId
   editingIncomes.value = registration.incomes.map((income) => ({ ...income }))
   editingDependents.value = registration.dependents.map((dependent) => ({ ...dependent }))
@@ -139,14 +147,17 @@ const saveIncomeAndReturn = () => {
         </div>
         <div class="saved-registration-list">
           <article
-            v-for="registration in incomeStore.registrations"
+            v-for="(registration, registrationIndex) in incomeStore.registrations"
             :key="registration.id"
             class="saved-registration"
             :class="{ editing: editingRegistrationId === registration.id }"
           >
             <div class="entry-topline">
               <span>Cadastro de rendimentos</span>
-              <div class="saved-actions">
+              <div
+                class="saved-actions"
+                :class="{ confirming: confirmingDeleteId === registration.id }"
+              >
                 <template v-if="editingRegistrationId === registration.id">
                   <button
                     class="edit-button"
@@ -161,23 +172,25 @@ const saveIncomeAndReturn = () => {
                   </button>
                 </template>
                 <button
-                  v-else
+                  v-else-if="confirmingDeleteId !== registration.id"
                   class="edit-button"
                   type="button"
-                  :aria-label="`Editar cadastro de rendimentos ${registration.id}`"
+                  :aria-label="`Editar cadastro de rendimentos ${registrationIndex + 1}`"
                   @click="startInlineEdit(registration.id)"
                 >
                   Editar
                 </button>
-                <button
+                <ConfirmDelete
                   v-if="editingRegistrationId !== registration.id"
-                  class="remove-button"
-                  type="button"
-                  :aria-label="`Remover cadastro de rendimentos ${registration.id}`"
-                  @click="incomeStore.removeRegistration(registration.id)"
+                  :open="confirmingDeleteId === registration.id"
+                  :item-label="`o cadastro de rendimentos ${registrationIndex + 1}`"
+                  @update:open="setConfirmingDelete(registration.id, $event)"
+                  @confirm="incomeStore.removeRegistration(registration.id)"
                 >
-                  Remover
-                </button>
+                  <p>
+                    Os rendimentos, os dependentes e a pensão deste cadastro saem da estimativa.
+                  </p>
+                </ConfirmDelete>
               </div>
             </div>
             <div class="saved-entry-list">
@@ -725,14 +738,30 @@ h2 {
   text-transform: uppercase;
 }
 
+.saved-registration .entry-topline {
+  flex-wrap: wrap;
+}
+
 .saved-actions {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 0.25rem;
+  /* Stays on the right when the row wraps on a narrow phone. */
+  margin-left: auto;
+}
+
+/* The delete confirmation takes the whole row under the title. */
+.saved-actions.confirming {
+  flex-basis: 100%;
+  text-transform: none;
+  font-weight: 400;
+  font-size: 1rem;
 }
 
 .remove-button {
-  padding: 0;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  padding: 0 0.5rem;
   border: 0;
   background: none;
   color: var(--color-accent);
@@ -742,7 +771,9 @@ h2 {
 }
 
 .edit-button {
-  padding: 0;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  padding: 0 0.5rem;
   border: 0;
   background: none;
   color: var(--color-text-muted);
@@ -790,6 +821,7 @@ select.field-control option {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
+  min-height: 2.75rem;
   margin-top: 1rem;
   padding: 0.5rem 0;
   border: 0;
@@ -823,11 +855,14 @@ select.field-control option {
   font-size: 0.8rem;
 }
 
+/* The padding makes the touch target 44 px tall (RF-09) without changing the drawn toggle. */
 .switch {
   position: relative;
   display: block;
+  box-sizing: content-box;
   width: 3.2rem;
   height: 1.8rem;
+  padding: 0.5rem 0.25rem;
   flex-shrink: 0;
 }
 
@@ -840,7 +875,7 @@ select.field-control option {
 
 .switch span:not(.sr-only) {
   position: absolute;
-  inset: 0;
+  inset: 0.5rem 0.25rem;
   border-radius: 999px;
   background: var(--color-text-muted);
   cursor: pointer;
@@ -865,6 +900,12 @@ select.field-control option {
 
 .switch input:checked + span::after {
   transform: translateX(1.4rem);
+}
+
+/* The real checkbox is invisible, so the drawn toggle shows the keyboard focus. */
+.switch input:focus-visible + span {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
 }
 
 .dependents-content {

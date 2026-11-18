@@ -32,6 +32,9 @@
 
   /* Room reserved for the fixed bottom nav, so content never hides behind it. */
   --nav-clearance: calc(6.5rem + env(safe-area-inset-bottom));
+
+  /* Width of the column of the internal screens: the whole phone, centered on a computer. */
+  --content-max: 48rem;
 }
 
 @media (prefers-color-scheme: dark) {
