@@ -13,6 +13,12 @@ export function readProfile(user: User | null): ProfileFields {
   return { name: name ?? '', email: user?.email ?? '' }
 }
 
+// Header of the internal screens (RF-09): "Olá, Ana" from "Ana Souza", or just "Olá!" without a name.
+export function greeting(name: string): string {
+  const firstName = name.trim().split(/\s+/)[0]
+  return firstName ? `Olá, ${firstName}` : 'Olá!'
+}
+
 export function normalizeProfile(profile: ProfileFields): ProfileFields {
   return {
     name: profile.name.trim(),

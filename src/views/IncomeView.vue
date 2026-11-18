@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import ConfirmDelete from '@/components/ConfirmDelete.vue'
 import MoneyInput from '@/components/MoneyInput.vue'
 import PageCard from '@/components/PageCard.vue'
 import TaxEstimateCard from '@/components/TaxEstimateCard.vue'
@@ -13,7 +14,6 @@ import {
   incomeEntryWarnings,
   type DependentIncome,
   type IncomeCategory,
-  type RegisteredDependent,
   type RegisteredIncomeEntry,
   useIncomeStore,
 } from '@/stores/income'
@@ -36,53 +36,54 @@ const router = useRouter()
 const incomeStore = useIncomeStore()
 const dependentDeduction = parametros(2026).dependente
 const editingRegistrationId = ref<number | null>(null)
+const confirmingDeleteId = ref<number | null>(null)
 const editingIncomes = ref<RegisteredIncomeEntry[]>([])
-const editingDependents = ref<RegisteredDependent[]>([])
-const editingAlimony = ref('')
 const salaryErrors = ref<Record<number, string>>({})
 
-const draftWarnings = (income: RegisteredIncomeEntry) =>
-  incomeEntryWarnings(
-    income,
-    incomeStore.draftHasDependents ? incomeStore.draftDependents.length : 0,
-    incomeStore.draftAlimony,
-  )
-const editingWarnings = (income: RegisteredIncomeEntry | undefined) =>
-  income ? incomeEntryWarnings(income, editingDependents.value.length, editingAlimony.value) : []
+// The payslip checks use the declaration's dependents and alimony, whichever source it is.
+const incomeWarnings = (income: RegisteredIncomeEntry | undefined) =>
+  income
+    ? incomeEntryWarnings(
+        income,
+        incomeStore.household.dependents.length,
+        incomeStore.household.alimonyPaid,
+      )
+    : []
 
 const fillFromSalary = (id: number) => {
   salaryErrors.value[id] = incomeStore.fillDraftIncomeFromSalary(id)
 }
 
 const updateDependentCount = (event: Event) => {
-  incomeStore.setDraftDependentCount(Number((event.target as HTMLInputElement).value))
+  incomeStore.setDependentCount(Number((event.target as HTMLInputElement).value))
 }
 
 const updateHasDependents = (event: Event) => {
-  incomeStore.setDraftHasDependents((event.target as HTMLInputElement).checked)
+  incomeStore.setHasDependents((event.target as HTMLInputElement).checked)
+}
+
+const setConfirmingDelete = (registrationId: number, open: boolean) => {
+  if (open) confirmingDeleteId.value = registrationId
+  else if (confirmingDeleteId.value === registrationId) confirmingDeleteId.value = null
 }
 
 const startInlineEdit = (registrationId: number) => {
   const registration = incomeStore.registrations.find((item) => item.id === registrationId)
   if (!registration) return
 
+  confirmingDeleteId.value = null
   editingRegistrationId.value = registrationId
   editingIncomes.value = registration.incomes.map((income) => ({ ...income }))
-  editingDependents.value = registration.dependents.map((dependent) => ({ ...dependent }))
-  editingAlimony.value = registration.alimonyPaid
 }
 
 const cancelInlineEdit = () => {
   editingRegistrationId.value = null
   editingIncomes.value = []
-  editingDependents.value = []
-  editingAlimony.value = ''
 }
 
 const canSaveInlineEdit = computed(
   () =>
-    (editingIncomes.value.some((income) => cents(income.amount) > 0) ||
-      editingDependents.value.some((dependent) => cents(dependent.amount) > 0)) &&
+    editingIncomes.value.some((income) => cents(income.amount) > 0) &&
     editingIncomes.value.every((income) => !incomeEntryError(income)),
 )
 
@@ -95,19 +96,12 @@ const updateEditingIncome = (
   if (income) income[field] = String(value)
 }
 
-const updateEditingDependentAmount = (index: number, amount: string | number) => {
-  const dependent = editingDependents.value[index]
-  if (dependent) dependent.amount = String(amount)
-}
-
 const saveInlineEdit = () => {
   if (editingRegistrationId.value === null || !canSaveInlineEdit.value) return
 
   incomeStore.updateRegistration({
     id: editingRegistrationId.value,
     incomes: editingIncomes.value.filter((income) => cents(income.amount) > 0),
-    dependents: editingDependents.value,
-    alimonyPaid: editingAlimony.value,
   })
   cancelInlineEdit()
 }
@@ -139,14 +133,17 @@ const saveIncomeAndReturn = () => {
         </div>
         <div class="saved-registration-list">
           <article
-            v-for="registration in incomeStore.registrations"
+            v-for="(registration, registrationIndex) in incomeStore.registrations"
             :key="registration.id"
             class="saved-registration"
             :class="{ editing: editingRegistrationId === registration.id }"
           >
             <div class="entry-topline">
               <span>Cadastro de rendimentos</span>
-              <div class="saved-actions">
+              <div
+                class="saved-actions"
+                :class="{ confirming: confirmingDeleteId === registration.id }"
+              >
                 <template v-if="editingRegistrationId === registration.id">
                   <button
                     class="edit-button"
@@ -161,23 +158,23 @@ const saveIncomeAndReturn = () => {
                   </button>
                 </template>
                 <button
-                  v-else
+                  v-else-if="confirmingDeleteId !== registration.id"
                   class="edit-button"
                   type="button"
-                  :aria-label="`Editar cadastro de rendimentos ${registration.id}`"
+                  :aria-label="`Editar cadastro de rendimentos ${registrationIndex + 1}`"
                   @click="startInlineEdit(registration.id)"
                 >
                   Editar
                 </button>
-                <button
+                <ConfirmDelete
                   v-if="editingRegistrationId !== registration.id"
-                  class="remove-button"
-                  type="button"
-                  :aria-label="`Remover cadastro de rendimentos ${registration.id}`"
-                  @click="incomeStore.removeRegistration(registration.id)"
+                  :open="confirmingDeleteId === registration.id"
+                  :item-label="`o cadastro de rendimentos ${registrationIndex + 1}`"
+                  @update:open="setConfirmingDelete(registration.id, $event)"
+                  @confirm="incomeStore.removeRegistration(registration.id)"
                 >
-                  Remover
-                </button>
+                  <p>Os rendimentos deste cadastro saem da estimativa.</p>
+                </ConfirmDelete>
               </div>
             </div>
             <div class="saved-entry-list">
@@ -232,7 +229,7 @@ const saveIncomeAndReturn = () => {
                 </p>
                 <template v-if="editingRegistrationId === registration.id">
                   <p
-                    v-for="warning in editingWarnings(editingIncomes[index])"
+                    v-for="warning in incomeWarnings(editingIncomes[index])"
                     :key="warning"
                     class="field-warning"
                     role="status"
@@ -240,40 +237,6 @@ const saveIncomeAndReturn = () => {
                     {{ warning }}
                   </p>
                 </template>
-              </div>
-              <div
-                v-for="(dependent, index) in registration.dependents"
-                :key="dependent.id"
-                class="saved-entry"
-              >
-                <span>{{ dependentIncomeLabels[dependent.incomeType] }}</span>
-                <MoneyInput
-                  v-if="
-                    editingRegistrationId === registration.id && dependent.incomeType !== 'none'
-                  "
-                  :model-value="editingDependents[index]?.amount ?? ''"
-                  class="saved-money-input"
-                  aria-label="Editar valor do rendimento do dependente"
-                  @update:model-value="updateEditingDependentAmount(index, $event)"
-                />
-                <strong v-else-if="dependent.incomeType !== 'none'">{{
-                  formatCurrency(cents(dependent.amount))
-                }}</strong>
-              </div>
-              <div
-                v-if="
-                  editingRegistrationId === registration.id || cents(registration.alimonyPaid) > 0
-                "
-                class="saved-entry"
-              >
-                <span>Pensão alimentícia paga por mês</span>
-                <MoneyInput
-                  v-if="editingRegistrationId === registration.id"
-                  v-model="editingAlimony"
-                  class="saved-money-input"
-                  aria-label="Editar pensão alimentícia paga por mês"
-                />
-                <strong v-else>{{ formatCurrency(cents(registration.alimonyPaid)) }}</strong>
               </div>
             </div>
           </article>
@@ -378,7 +341,7 @@ const saveIncomeAndReturn = () => {
               {{ incomeEntryError(income) }}
             </p>
             <p
-              v-for="warning in draftWarnings(income)"
+              v-for="warning in incomeWarnings(income)"
               :key="warning"
               class="field-warning"
               role="status"
@@ -410,6 +373,10 @@ const saveIncomeAndReturn = () => {
         <div class="toggle-row">
           <div>
             <strong>Possui dependentes?</strong>
+            <p>
+              Valem para a declaração inteira: informe cada dependente uma vez só, mesmo com mais de
+              uma fonte de renda. As mudanças contam na hora, sem precisar de "Adicionar".
+            </p>
             <p>Adicione as informações de renda de cada dependente.</p>
             <p>
               No modelo completo, cada dependente deduz {{ formatCurrency(dependentDeduction) }} por
@@ -418,7 +385,7 @@ const saveIncomeAndReturn = () => {
           </div>
           <label class="switch">
             <input
-              :checked="incomeStore.draftHasDependents"
+              :checked="incomeStore.hasDependents"
               type="checkbox"
               @change="updateHasDependents"
             />
@@ -427,11 +394,11 @@ const saveIncomeAndReturn = () => {
           </label>
         </div>
 
-        <div v-if="incomeStore.draftHasDependents" class="dependents-content">
+        <div v-if="incomeStore.hasDependents" class="dependents-content">
           <label class="field-label" for="dependent-count">Quantos dependentes?</label>
           <input
             id="dependent-count"
-            :value="incomeStore.draftDependentCount"
+            :value="incomeStore.dependents.length"
             class="field-control count-control"
             type="number"
             min="0"
@@ -440,9 +407,9 @@ const saveIncomeAndReturn = () => {
             @input="updateDependentCount"
           />
 
-          <div v-if="incomeStore.draftDependents.length" class="dependent-list">
+          <div v-if="incomeStore.dependents.length" class="dependent-list">
             <article
-              v-for="(dependent, index) in incomeStore.draftDependents"
+              v-for="(dependent, index) in incomeStore.dependents"
               :key="dependent.id"
               class="dependent-card"
             >
@@ -498,12 +465,16 @@ const saveIncomeAndReturn = () => {
           Só deduz a pensão fixada por decisão judicial, acordo homologado na Justiça ou escritura
           pública. A pensão que um dependente recebe fica no campo dele, acima.
         </p>
+        <p class="field-help">
+          Informe o total pago por mês uma vez só: vale para a declaração inteira, não para cada
+          fonte de renda.
+        </p>
         <label class="field-label" for="alimony-amount">Valor mensal</label>
         <MoneyInput
           id="alimony-amount"
           class="field-control currency-input"
           autocomplete="off"
-          v-model="incomeStore.draftAlimony"
+          v-model="incomeStore.alimonyPaid"
         />
       </section>
 
@@ -528,14 +499,14 @@ const saveIncomeAndReturn = () => {
               Total anual de Rendimentos Isentos
               <small>Pensão alimentícia</small>
             </dt>
-            <dd>{{ formatCurrency(incomeStore.summaryExemptTotal) }}</dd>
+            <dd>{{ formatCurrency(incomeStore.exemptTotal) }}</dd>
           </div>
           <div>
             <dt>
               Dependentes para dedução
-              <small>Cadastros salvos + este formulário</small>
+              <small>Valem para a declaração inteira</small>
             </dt>
-            <dd>{{ incomeStore.summaryDependentCount }}</dd>
+            <dd>{{ incomeStore.dependentCount }}</dd>
           </div>
         </dl>
       </footer>
@@ -705,14 +676,30 @@ h2 {
   text-transform: uppercase;
 }
 
+.saved-registration .entry-topline {
+  flex-wrap: wrap;
+}
+
 .saved-actions {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 0.25rem;
+  /* Stays on the right when the row wraps on a narrow phone. */
+  margin-left: auto;
+}
+
+/* The delete confirmation takes the whole row under the title. */
+.saved-actions.confirming {
+  flex-basis: 100%;
+  text-transform: none;
+  font-weight: 400;
+  font-size: 1rem;
 }
 
 .remove-button {
-  padding: 0;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  padding: 0 0.5rem;
   border: 0;
   background: none;
   color: var(--color-accent);
@@ -722,7 +709,9 @@ h2 {
 }
 
 .edit-button {
-  padding: 0;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  padding: 0 0.5rem;
   border: 0;
   background: none;
   color: var(--color-text-muted);
@@ -770,6 +759,7 @@ select.field-control option {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
+  min-height: 2.75rem;
   margin-top: 1rem;
   padding: 0.5rem 0;
   border: 0;
@@ -803,11 +793,14 @@ select.field-control option {
   font-size: 0.8rem;
 }
 
+/* The padding makes the touch target 44 px tall (RF-09) without changing the drawn toggle. */
 .switch {
   position: relative;
   display: block;
+  box-sizing: content-box;
   width: 3.2rem;
   height: 1.8rem;
+  padding: 0.5rem 0.25rem;
   flex-shrink: 0;
 }
 
@@ -820,7 +813,7 @@ select.field-control option {
 
 .switch span:not(.sr-only) {
   position: absolute;
-  inset: 0;
+  inset: 0.5rem 0.25rem;
   border-radius: 999px;
   background: var(--color-text-muted);
   cursor: pointer;
@@ -845,6 +838,12 @@ select.field-control option {
 
 .switch input:checked + span::after {
   transform: translateX(1.4rem);
+}
+
+/* The real checkbox is invisible, so the drawn toggle shows the keyboard focus. */
+.switch input:focus-visible + span {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
 }
 
 .dependents-content {

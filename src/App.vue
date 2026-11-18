@@ -1,12 +1,16 @@
 <script setup lang="ts">
-import { defineAsyncComponent, onMounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, onMounted, ref, watch } from 'vue'
 import { RouterView, useRoute } from 'vue-router'
 import BottomNav from '@/components/BottomNav.vue'
+import LoadingState from '@/components/LoadingState.vue'
 
 const UserView = defineAsyncComponent(() => import('@/views/UserView.vue'))
+const AppHeader = defineAsyncComponent(() => import('@/components/AppHeader.vue'))
 const ready = ref(false)
 const isGuest = ref(true)
 const route = useRoute()
+// The header and the bottom bar frame the internal screens (RF-09), so only a signed-in user sees them.
+const signedIn = computed(() => ready.value && !isGuest.value)
 
 onMounted(() => {
   const init = () => {
@@ -28,8 +32,9 @@ onMounted(() => {
 </script>
 
 <template>
-  <main class="app-main">
-    <p v-if="!ready" class="auth-loading" role="status">Verificando sua sessão…</p>
+  <AppHeader v-if="signedIn" />
+  <main class="app-main" :class="signedIn ? 'app-main--shell' : 'app-main--centered'">
+    <LoadingState v-if="!ready" message="Verificando sua sessão…" />
     <UserView v-else-if="isGuest && !route.meta.public" />
     <RouterView v-else v-slot="{ Component }">
       <Transition name="page" mode="out-in">
@@ -37,20 +42,32 @@ onMounted(() => {
       </Transition>
     </RouterView>
   </main>
-  <BottomNav v-if="ready && !isGuest" />
+  <BottomNav v-if="signedIn" />
 </template>
 
 <style scoped>
 .app-main {
   display: grid;
-  place-items: center;
-  min-height: 100dvh;
-  padding: calc(1.5rem + env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right))
-    var(--nav-clearance) max(1rem, env(safe-area-inset-left));
+  justify-items: center;
+  width: 100%;
+  padding-inline: max(1rem, env(safe-area-inset-left)) max(1rem, env(safe-area-inset-right));
 }
 
-.auth-loading {
-  color: var(--color-text-muted);
+/* Access form, session check and public pages for guests: one card in the middle of the screen. */
+.app-main--centered {
+  place-items: center;
+  min-height: 100dvh;
+  padding-block: calc(1.5rem + env(safe-area-inset-top)) calc(1.5rem + env(safe-area-inset-bottom));
+}
+
+/* Internal screens: a column under the greeting, centered on wide screens, clear of the bottom bar. */
+.app-main--shell {
+  align-content: start;
+  max-width: var(--content-max);
+  margin-inline: auto;
+  padding-bottom: var(--nav-clearance);
+  /* Cards fill the column, so they line up with the greeting. */
+  --page-card-max: 100%;
 }
 
 .page-enter-active,
