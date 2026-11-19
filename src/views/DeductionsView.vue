@@ -76,7 +76,7 @@ const expensesByCategory = computed(() =>
   CATEGORIES.map((category) => ({
     category,
     entries: incomeStore.expenses
-      .map((expense, index) => ({ expense, effect: incomeStore.deductionEffects.despesas[index] }))
+      .map((expense, index) => ({ expense, effect: incomeStore.deductionEffects?.despesas[index] }))
       .filter(({ expense }) => expense.categoria === category),
   })).filter((group) => group.entries.length > 0),
 )
@@ -434,7 +434,7 @@ const pensionWarning = (expense: RegisteredExpense) => {
       </section>
 
       <section
-        v-if="incomeStore.deductionEffects.educacaoPorPessoa.length"
+        v-if="incomeStore.deductionEffects?.educacaoPorPessoa.length"
         class="education-section glass"
         aria-labelledby="education-title"
       >
@@ -445,7 +445,7 @@ const pensionWarning = (expense: RegisteredExpense) => {
           </div>
         </div>
         <div
-          v-for="usage in incomeStore.deductionEffects.educacaoPorPessoa"
+          v-for="usage in incomeStore.deductionEffects?.educacaoPorPessoa"
           :key="usage.pessoa"
           class="education-usage"
         >
@@ -527,7 +527,7 @@ const pensionWarning = (expense: RegisteredExpense) => {
             </div>
           </article>
         </section>
-        <p class="total-effect">
+        <p v-if="incomeStore.deductionEffects" class="total-effect">
           Redução estimada pelas despesas de saúde e educação:
           <strong>{{ formatCurrency(incomeStore.deductionEffects.efeitoTotal) }}</strong>
         </p>

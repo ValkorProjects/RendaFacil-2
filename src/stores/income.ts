@@ -571,7 +571,14 @@ export const useIncomeStore = defineStore('income', () => {
   const taxEstimate = computed(() => estimateTax(registrations.value, household.value))
   // RF-07: the effect of each saved expense, in the order of `expenses`.
   const declarationData = computed(() => buildDeclarationData(registrations.value, household.value))
-  const deductionEffects = computed(() => calcularEfeitos(declarationData.value))
+  // Null when the engine refuses the values: the estimate card already says why.
+  const deductionEffects = computed(() => {
+    try {
+      return calcularEfeitos(declarationData.value)
+    } catch {
+      return null
+    }
+  })
   const summaryInssWarning = computed(() => {
     const incomes = [...registrations.value, draftRegistration.value].flatMap((registration) =>
       registration.incomes.filter((income) => isIncludedIncome(income, household.value)),

@@ -207,6 +207,16 @@ describe('income store · estimate from the income screen', () => {
     expect(estimate?.ok).toBe(false)
     expect(estimate?.ok === false && estimate.error).toMatch('inteiros seguros')
   })
+
+  it('has no expense effects, instead of throwing, when the engine refuses the saved values', () => {
+    const store = useIncomeStore()
+    fillDraft(store, { salary: 'R$ 99.999.999.999,99' })
+    expect(store.saveDraft()).toBe(true)
+
+    expect(() => store.deductionEffects).not.toThrow()
+    expect(store.deductionEffects).toBeNull()
+    expect(store.taxEstimate?.ok).toBe(false)
+  })
 })
 
 describe('buildTaxInput', () => {
@@ -330,7 +340,7 @@ describe('income store · deductible expenses (RF-13)', () => {
     )
 
     expect(store.expenses).toHaveLength(2)
-    expect(store.deductionEffects.despesas.map((item) => item.mensagens[0])).toEqual([
+    expect(store.deductionEffects?.despesas.map((item) => item.mensagens[0])).toEqual([
       'Não deduz: remédio de farmácia (fora da conta do hospital)',
       'Não deduz: curso de idiomas',
     ])
@@ -352,13 +362,13 @@ describe('income store · deductible expenses (RF-13)', () => {
       }),
     )
 
-    expect(store.deductionEffects.educacaoPorPessoa).toMatchObject([
+    expect(store.deductionEffects?.educacaoPorPessoa).toMatchObject([
       { pessoa: dependentId, uso: 200_000, restante: 156_150 },
     ])
 
     store.removeDependent(store.dependents[0]!.id)
     expect(store.expenses).toEqual([])
-    expect(store.deductionEffects.educacaoPorPessoa).toEqual([])
+    expect(store.deductionEffects?.educacaoPorPessoa).toEqual([])
   })
 
   it('does not count expenses or income for a dependent in another declaration', () => {
@@ -397,8 +407,8 @@ describe('income store · deductible expenses (RF-13)', () => {
       ok: true,
       result: { rendimentos: 6_000_000, deducaoDependentes: 0 },
     })
-    expect(store.deductionEffects.educacaoPorPessoa).toEqual([])
-    expect(store.deductionEffects.despesas[0]?.situacao).toBe('nao_deduz')
+    expect(store.deductionEffects?.educacaoPorPessoa).toEqual([])
+    expect(store.deductionEffects?.despesas[0]?.situacao).toBe('nao_deduz')
   })
 
   it('refuses an invalid expense when adding and when editing', () => {
