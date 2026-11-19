@@ -45,7 +45,7 @@ const addIncome = () =>
 const hasSavedIncome = computed(() => incomeDrafts.value.some((income) => income.id >= 0))
 const incomeQuestionError = (income: RegisteredIncomeEntry) =>
   incomeEntryError(income) ||
-  (cents(income.amount) <= 0 ? 'Informe um valor mensal maior que zero.' : '')
+  (cents(income.amount) <= 0 ? 'Informe o total do ano, maior que zero.' : '')
 // Quem aparece em outra declaração não entra na conta: a renda dele não é pedida.
 const asksIncome = computed(
   () => draft.value.teve_renda_propria && !draft.value.em_outra_declaracao,
@@ -230,21 +230,27 @@ const linkedIncomes = (id: number) =>
                 {{ label }}
               </option>
             </select>
-            <label :for="`dependent-income-amount-${income.id}`">Quanto recebeu por mês?</label>
+            <label :for="`dependent-income-amount-${income.id}`"
+              >Quanto recebeu em 2026? (informe, quadro 3, linha 01)</label
+            >
             <Money3Component
               :id="`dependent-income-amount-${income.id}`"
               v-model="income.amount"
               v-bind="moneyConfig"
               inputmode="numeric"
             />
-            <label :for="`dependent-income-inss-${income.id}`">INSS descontado no mês</label>
+            <label :for="`dependent-income-inss-${income.id}`"
+              >INSS no ano (quadro 3, linha 02)</label
+            >
             <Money3Component
               :id="`dependent-income-inss-${income.id}`"
               v-model="income.inss"
               v-bind="moneyConfig"
               inputmode="numeric"
             />
-            <label :for="`dependent-income-irrf-${income.id}`">IR retido na fonte no mês</label>
+            <label :for="`dependent-income-irrf-${income.id}`"
+              >IR retido no ano (quadro 3, linha 05)</label
+            >
             <Money3Component
               :id="`dependent-income-irrf-${income.id}`"
               v-model="income.irrf"

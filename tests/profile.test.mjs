@@ -191,7 +191,8 @@ test('password changes reject invalid inputs and incorrect current passwords bef
 })
 
 test('dependents without income survive saving and account data is cleared on sign-out', async () => {
-  income.draftIncomes[0].amount = '100000'
+  // Yearly figures of the informe de rendimentos (RF-12).
+  income.draftIncomes[0].amount = '1200000'
   income.saveDependent({
     apelido: 'Lia',
     relacao: 'filho_enteado',
@@ -205,7 +206,7 @@ test('dependents without income survive saving and account data is cleared on si
     teve_renda_propria: true,
   })
   income.addDraftIncome()
-  Object.assign(income.draftIncomes[1], { amount: '50000', dependentId: income.dependents[1].id })
+  Object.assign(income.draftIncomes[1], { amount: '600000', dependentId: income.dependents[1].id })
   assert.equal(income.saveDraft(), true)
   assert.equal(income.dependentCount, 2)
   assert.equal(income.dependents[0].teve_renda_propria, false)

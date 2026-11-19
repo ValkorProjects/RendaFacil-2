@@ -4,7 +4,13 @@ import type { PayrollRow, TaxEstimate } from '@/stores/income'
 import { formatCurrency } from '@/utils/currency'
 import { describeTaxResult, formatRate } from '@/utils/taxResult'
 
-const props = defineProps<{ estimate: TaxEstimate | null; payroll: PayrollRow[] }>()
+// `pending`: the reasons the estimate is provisional (RF-14). When given, the card shows the
+// status, complete or provisional, with each reason.
+const props = defineProps<{
+  estimate: TaxEstimate | null
+  payroll: PayrollRow[]
+  pending?: readonly string[]
+}>()
 
 // 'anual' is the declaration (yearly totals); 'mensal' shows the payslip calculation behind the
 // INSS and income tax figures, to check them against the holerite.
@@ -37,7 +43,15 @@ const otherModel = computed(() =>
 <template>
   <section class="tax-estimate glass" aria-labelledby="tax-estimate-title" aria-live="polite">
     <p class="kicker">Estimativa do imposto</p>
-    <p v-if="estimate?.ok && estimate.provisional" class="line" role="status">
+    <div v-if="estimate?.ok && pending" class="status" :class="{ provisional: pending.length }">
+      <strong role="status">{{
+        pending.length ? 'Estimativa provisória' : 'Estimativa completa'
+      }}</strong>
+      <ul v-if="pending.length">
+        <li v-for="reason in pending" :key="reason">{{ reason }}</li>
+      </ul>
+    </div>
+    <p v-else-if="estimate?.ok && estimate.provisional" class="line" role="status">
       <strong>Estimativa provisória.</strong> Falta lançar o informe de dependente com renda própria
       em Rendas, no campo “De quem é o rendimento?”.
     </p>
@@ -503,5 +517,24 @@ td.chosen {
   .tax-estimate {
     padding: 1.5rem;
   }
+}
+.status {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.625rem 0.875rem;
+  border-radius: 0.875rem;
+  background: var(--glass-bg-raised);
+  font-size: 0.9375rem;
+  text-align: left;
+}
+
+.status.provisional {
+  border-left: 3px solid var(--color-accent);
+}
+
+.status ul {
+  margin: 0;
+  padding-left: 1.25rem;
+  color: var(--color-text-muted);
 }
 </style>

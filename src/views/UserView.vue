@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import AppIcon from '@/components/AppIcon.vue'
@@ -219,6 +219,42 @@ watch(
   },
   { immediate: true },
 )
+
+// Menu › Excluir conta opens this page with ?acao=excluir: show the confirmation once the
+// session is known and the page is mounted (the page transition mounts it only after the
+// previous page leaves), then drop the parameter so a reload does not open it again.
+const mounted = ref(false)
+onMounted(() => {
+  mounted.value = true
+})
+watch(
+  () => [route.query.acao, ready.value, isGuest.value, mounted.value] as const,
+  async ([acao, isReady, guest, isMounted]) => {
+    if (acao !== 'excluir' || !isReady || !isMounted) return
+    if (!guest) openDeleteDialog()
+    await router.replace({ path: route.path, query: {}, hash: '' })
+  },
+  { immediate: true },
+)
+
+// RF-15: while the e-mail is not confirmed, the account can ask for the link again.
+const emailUnconfirmed = computed(() =>
+  Boolean(user.value?.email && !user.value.email_confirmed_at),
+)
+
+async function resendOwnConfirmation() {
+  if (busy.value || !user.value?.email) return
+  clearMessages()
+  busy.value = true
+  try {
+    await auth.resendConfirmation(user.value.email)
+    successMessage.value = 'Um novo link de confirmação foi enviado para seu e-mail.'
+  } catch (error) {
+    errorMessage.value = authErrorMessage(error)
+  } finally {
+    busy.value = false
+  }
+}
 
 watch(
   recoveryPending,
@@ -776,6 +812,15 @@ async function signOut() {
             @click="openPasswordDialog"
           >
             Trocar senha
+          </button>
+          <button
+            v-if="emailUnconfirmed"
+            type="button"
+            class="secondary-button"
+            :disabled="busy"
+            @click="resendOwnConfirmation"
+          >
+            Reenviar confirmação de e-mail
           </button>
           <button type="button" class="secondary-button" :disabled="busy" @click="signOut">
             Sair da conta

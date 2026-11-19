@@ -19,8 +19,8 @@ import {
   type RegisteredIncomeEntry,
 } from '@/stores/income'
 
-// The income screen works with monthly amounts typed into masked inputs ("R$ 6.500,00"); the
-// store annualizes them and passes them to the tax engine.
+// The income screen takes the yearly figures of the informe de rendimentos ("R$ 78.000,00"); the
+// store passes them to the tax engine as they are (the payslip checks use a twelfth).
 
 type Store = ReturnType<typeof useIncomeStore>
 
@@ -78,7 +78,7 @@ beforeEach(() => {
 describe('income store · estimate from the income screen', () => {
   it('RF-08 case F1: 6.500 a month, 2 dependents without income and 800 of alimony', () => {
     const store = useIncomeStore()
-    fillDraft(store, { salary: 'R$ 6.500,00', inss: 'R$ 711,51', irrf: 'R$ 248,42' })
+    fillDraft(store, { salary: 'R$ 78.000,00', inss: 'R$ 8.538,12', irrf: 'R$ 2.981,04' })
     withDependents(store, 2)
     store.addExpense(expense())
 
@@ -99,7 +99,7 @@ describe('income store · estimate from the income screen', () => {
 
   it('keeps the estimate after saving, including dependents without income', () => {
     const store = useIncomeStore()
-    fillDraft(store, { salary: 'R$ 6.500,00', inss: 'R$ 711,51', irrf: 'R$ 248,42' })
+    fillDraft(store, { salary: 'R$ 78.000,00', inss: 'R$ 8.538,12', irrf: 'R$ 2.981,04' })
     withDependents(store, 2)
     store.addExpense(expense())
 
@@ -112,7 +112,7 @@ describe('income store · estimate from the income screen', () => {
 
   it('keeps dependents and alimony for the next registration instead of starting them over', () => {
     const store = useIncomeStore()
-    fillDraft(store, { salary: 'R$ 6.500,00', inss: 'R$ 711,51', irrf: 'R$ 248,42' })
+    fillDraft(store, { salary: 'R$ 78.000,00', inss: 'R$ 8.538,12', irrf: 'R$ 2.981,04' })
     withDependents(store, 2)
     store.addExpense(expense())
     store.saveDraft()
@@ -125,11 +125,11 @@ describe('income store · estimate from the income screen', () => {
 
   it('counts dependents and alimony once with a second job (F1 + 2.000 a month)', () => {
     const store = useIncomeStore()
-    fillDraft(store, { salary: 'R$ 6.500,00', inss: 'R$ 711,51', irrf: 'R$ 248,42' })
+    fillDraft(store, { salary: 'R$ 78.000,00', inss: 'R$ 8.538,12', irrf: 'R$ 2.981,04' })
     withDependents(store, 2)
     store.addExpense(expense())
     store.saveDraft()
-    fillDraft(store, { salary: 'R$ 2.000,00', inss: 'R$ 150,00' })
+    fillDraft(store, { salary: 'R$ 24.000,00', inss: 'R$ 1.800,00' })
     store.saveDraft()
 
     // Before, a second registration kept its own copy: typing them again counted 4 dependents and
@@ -144,7 +144,7 @@ describe('income store · estimate from the income screen', () => {
 
   it('applies a change to dependents or alimony at once, with nothing to save', () => {
     const store = useIncomeStore()
-    fillDraft(store, { salary: 'R$ 6.500,00', inss: 'R$ 711,51', irrf: 'R$ 248,42' })
+    fillDraft(store, { salary: 'R$ 78.000,00', inss: 'R$ 8.538,12', irrf: 'R$ 2.981,04' })
     store.saveDraft()
     const without = store.taxEstimate
 
@@ -169,7 +169,7 @@ describe('income store · estimate from the income screen', () => {
 
   it('RF-08 case F2: 6.000 a month without deductions gives a refund in the simplified model', () => {
     const store = useIncomeStore()
-    fillDraft(store, { salary: 'R$ 6.000,00', inss: 'R$ 641,51', irrf: 'R$ 385,10' })
+    fillDraft(store, { salary: 'R$ 72.000,00', inss: 'R$ 7.698,12', irrf: 'R$ 4.621,20' })
 
     expect(store.summaryTaxEstimate).toMatchObject({
       ok: true,
@@ -179,22 +179,24 @@ describe('income store · estimate from the income screen', () => {
 
   it('fills INSS and the tax withheld from the salary with the monthly payroll calculation', () => {
     const store = useIncomeStore()
-    const income = fillDraft(store, { salary: 'R$ 6.500,00' })
+    const income = fillDraft(store, { salary: 'R$ 78.000,00' })
     withDependents(store, 2)
     store.addExpense(expense())
 
     expect(store.fillDraftIncomeFromSalary(income.id)).toBe('')
 
     // Alimony is entered once a year in Despesas and is not assumed in the monthly payroll.
-    expect(income).toMatchObject({ inss: 'R$ 711,51', irrf: 'R$ 465,65' })
+    expect(income).toMatchObject({ inss: 'R$ 8.538,12', irrf: 'R$ 5.587,80' })
     expect(store.summaryTaxEstimate).toMatchObject({ ok: true, result: { totalPensoes: 960_000 } })
   })
 
   it('does not save a source with more withheld than its income', () => {
     const store = useIncomeStore()
-    const income = fillDraft(store, { salary: 'R$ 1.000,00', irrf: 'R$ 1.000,01' })
+    const income = fillDraft(store, { salary: 'R$ 12.000,00', irrf: 'R$ 12.000,12' })
 
-    expect(incomeEntryError(income)).toBe('O IR retido não pode ser maior que o valor mensal.')
+    expect(incomeEntryError(income)).toBe(
+      'O IR retido não pode ser maior que o total dos rendimentos.',
+    )
     expect(store.canSaveDraft).toBe(false)
     expect(store.saveDraft()).toBe(false)
   })
@@ -226,8 +228,8 @@ describe('buildTaxInput', () => {
         [
           registration({
             incomes: [
-              { id: 1, category: 'clt', amount: 'R$ 3.000,00', inss: 'R$ 253,41', irrf: '' },
-              { id: 2, category: 'alugueis', amount: 'R$ 1.500,00', inss: '', irrf: '' },
+              { id: 1, category: 'clt', amount: 'R$ 36.000,00', inss: 'R$ 3.040,92', irrf: '' },
+              { id: 2, category: 'alugueis', amount: 'R$ 18.000,00', inss: '', irrf: '' },
             ],
           }),
         ],
@@ -253,7 +255,7 @@ describe('buildTaxInput', () => {
             {
               id: 1,
               category: 'autonomo',
-              amount: 'R$ 1.200,00',
+              amount: 'R$ 14.400,00',
               inss: '',
               irrf: '',
               dependentId: 2,
@@ -261,7 +263,7 @@ describe('buildTaxInput', () => {
             {
               id: 2,
               category: 'pensaoAlimenticia',
-              amount: 'R$ 900,00',
+              amount: 'R$ 10.800,00',
               inss: '',
               irrf: '',
               dependentId: 3,
@@ -280,11 +282,11 @@ describe('buildTaxInput', () => {
       [
         registration({
           id: 1,
-          incomes: [{ id: 1, category: 'clt', amount: 'R$ 1.000,00', inss: '', irrf: '' }],
+          incomes: [{ id: 1, category: 'clt', amount: 'R$ 12.000,00', inss: '', irrf: '' }],
         }),
         registration({
           id: 2,
-          incomes: [{ id: 2, category: 'clt', amount: 'R$ 2.000,00', inss: '', irrf: '' }],
+          incomes: [{ id: 2, category: 'clt', amount: 'R$ 24.000,00', inss: '', irrf: '' }],
         }),
       ],
       household({
@@ -310,6 +312,95 @@ describe('estimateTax', () => {
   })
 })
 
+describe('income store · informe de rendimentos (RF-12)', () => {
+  it('counts the informes against the expected number and keeps the estimate provisional', () => {
+    const store = useIncomeStore()
+    store.setExpectedStatements(2)
+    fillDraft(store, { salary: 'R$ 78.000,00' })
+    store.saveDraft()
+
+    expect(store.statementCount).toBe(1)
+    expect(store.estimateStatus).toEqual(['Falta 1 informe de rendimentos.'])
+
+    store.setExpectedStatements(1)
+    expect(store.estimateStatus).toEqual([])
+  })
+
+  it('keeps 13º and PLR, shows them apart and leaves them out of the adjustment', () => {
+    const store = useIncomeStore()
+    const income = fillDraft(store, { salary: 'R$ 78.000,00', inss: 'R$ 8.538,12' })
+    const withoutExtras = store.summaryTaxEstimate
+    Object.assign(income, {
+      employer: 'Empresa A',
+      thirteenth: 'R$ 6.500,00',
+      thirteenthIrrf: 'R$ 400,00',
+      profitSharing: 'R$ 3.000,00',
+    })
+    store.saveDraft()
+
+    expect(store.registrations[0]?.incomes[0]).toMatchObject({
+      employer: 'Empresa A',
+      thirteenth: 'R$ 6.500,00',
+      profitSharing: 'R$ 3.000,00',
+    })
+    expect(store.exclusiveTaxationTotal).toBe(950_000)
+    expect(store.taxableTotal).toBe(7_800_000)
+    expect(store.taxEstimate).toEqual(withoutExtras)
+  })
+
+  it('does not accept more income tax on the 13º than the 13º itself', () => {
+    const store = useIncomeStore()
+    const income = fillDraft(store, { salary: 'R$ 78.000,00' })
+    Object.assign(income, { thirteenth: 'R$ 500,00', thirteenthIrrf: 'R$ 500,01' })
+
+    expect(incomeEntryError(income)).toBe('O IR sobre o 13º não pode ser maior que o 13º salário.')
+    expect(store.saveDraft()).toBe(false)
+  })
+})
+
+describe('income store · status of the estimate on the Home (RF-14)', () => {
+  it('is complete with salary only, and follows each save without a reload', () => {
+    const store = useIncomeStore()
+    fillDraft(store, { salary: 'R$ 78.000,00', inss: 'R$ 8.538,12', irrf: 'R$ 2.981,04' })
+    store.saveDraft()
+    withDependents(store, 2)
+    store.addExpense(expense())
+
+    expect(store.estimateStatus).toEqual([])
+    // F1: the saved estimate (what the Home shows) already counts the dependents and the alimony.
+    expect(store.taxEstimate).toMatchObject({
+      ok: true,
+      result: {
+        modelo: 'completo',
+        impostoDevido: 336_441,
+        irrfRetido: 298_104,
+        resultado: -38_337,
+      },
+    })
+    expect(store.payroll).toHaveLength(1)
+  })
+
+  it('lists a dependent with income of their own whose statement is missing', () => {
+    const store = useIncomeStore()
+    fillDraft(store, { salary: 'R$ 72.000,00' })
+    store.saveDraft()
+    store.saveDependent({ ...emptyDependent(), apelido: 'Lia', teve_renda_propria: true })
+
+    expect(store.estimateStatus).toEqual(['Falta o informe de rendimentos de Lia.'])
+  })
+
+  it('says the result only considers salaries when other income was entered', () => {
+    const store = useIncomeStore()
+    const [income] = store.draftIncomes
+    Object.assign(income!, { category: 'alugueis', amount: 'R$ 18.000,00' })
+    store.saveDraft()
+
+    expect(store.estimateStatus).toEqual([
+      'O resultado considera só salários. Você lançou: Aluguéis.',
+    ])
+  })
+})
+
 describe('income store · deductible expenses (RF-13)', () => {
   const withSalary = (store: Store, salary: string) =>
     store.addRegistration(
@@ -318,7 +409,7 @@ describe('income store · deductible expenses (RF-13)', () => {
 
   it('registers non-deductible expenses, explains why, and leaves the tax estimate unchanged', () => {
     const store = useIncomeStore()
-    withSalary(store, 'R$ 6.500,00')
+    withSalary(store, 'R$ 78.000,00')
     const estimateWithoutExpenses = store.taxEstimate
     store.addExpense(
       expense({
@@ -373,7 +464,7 @@ describe('income store · deductible expenses (RF-13)', () => {
 
   it('does not count expenses or income for a dependent in another declaration', () => {
     const store = useIncomeStore()
-    withSalary(store, 'R$ 5.000,00')
+    withSalary(store, 'R$ 60.000,00')
     store.saveDependent({ ...emptyDependent(), apelido: 'Duda', em_outra_declaracao: true })
     const dependent = store.dependents[0]!
     store.addRegistration(
@@ -383,7 +474,7 @@ describe('income store · deductible expenses (RF-13)', () => {
           {
             id: 3,
             category: 'clt',
-            amount: 'R$ 1.000,00',
+            amount: 'R$ 12.000,00',
             inss: '',
             irrf: '',
             dependentId: dependent.id,
@@ -441,7 +532,7 @@ describe('income store · deductible expenses (RF-13)', () => {
 
   it('does not deduct alimony without the legal basis confirmed', () => {
     const store = useIncomeStore()
-    withSalary(store, 'R$ 6.500,00')
+    withSalary(store, 'R$ 78.000,00')
     store.addExpense(expense({ base_legal_ok: false }))
 
     expect(store.taxEstimate).toMatchObject({ ok: true, result: { totalPensoes: 0 } })
@@ -455,7 +546,7 @@ describe('INSS and income tax checks against the payslip calculation', () => {
   const clt = (fields: Partial<RegisteredIncomeEntry>): RegisteredIncomeEntry => ({
     id: 1,
     category: 'clt',
-    amount: 'R$ 6.500,00',
+    amount: 'R$ 78.000,00',
     inss: '',
     irrf: '',
     ...fields,
@@ -471,35 +562,35 @@ describe('INSS and income tax checks against the payslip calculation', () => {
   })
 
   it('warns when the typed INSS is above the table: 6.500 with INSS of 1.300', () => {
-    const warnings = incomeEntryWarnings(clt({ inss: 'R$ 1.300,00' }), 2)
+    const warnings = incomeEntryWarnings(clt({ inss: 'R$ 15.600,00' }), 2)
 
     expect(warnings).toHaveLength(1)
-    expect(plain(warnings[0])).toContain('INSS informado (R$ 1.300,00)')
-    expect(plain(warnings[0])).toContain('R$ 711,51')
+    expect(plain(warnings[0])).toContain('INSS informado (R$ 15.600,00)')
+    expect(plain(warnings[0])).toContain('R$ 8.538,12')
   })
 
   it('warns when the typed income tax differs from the payroll table', () => {
-    const warnings = incomeEntryWarnings(clt({ inss: 'R$ 711,51', irrf: 'R$ 900,00' }), 2)
+    const warnings = incomeEntryWarnings(clt({ inss: 'R$ 8.538,12', irrf: 'R$ 10.800,00' }), 2)
 
     expect(warnings).toHaveLength(1)
-    expect(plain(warnings[0])).toContain('IR retido informado (R$ 900,00)')
-    expect(plain(warnings[0])).toContain('R$ 465,65')
+    expect(plain(warnings[0])).toContain('IR retido informado (R$ 10.800,00)')
+    expect(plain(warnings[0])).toContain('R$ 5.587,80')
   })
 
   it('stays quiet when the values match (to the cent) or are not typed yet', () => {
-    expect(incomeEntryWarnings(clt({ inss: 'R$ 711,51', irrf: 'R$ 465,65' }), 2)).toEqual([])
+    expect(incomeEntryWarnings(clt({ inss: 'R$ 8.538,12', irrf: 'R$ 5.587,80' }), 2)).toEqual([])
     expect(incomeEntryWarnings(clt({}), 2)).toEqual([])
     // within the R$ 0,10 rounding tolerance
-    expect(incomeEntryWarnings(clt({ inss: 'R$ 711,55', irrf: 'R$ 465,63' }), 2)).toEqual([])
+    expect(incomeEntryWarnings(clt({ inss: 'R$ 8.538,60', irrf: 'R$ 5.587,56' }), 2)).toEqual([])
   })
 
   it('does not warn about a lower INSS: a second employer shares the ceiling', () => {
-    expect(incomeEntryWarnings(clt({ inss: 'R$ 400,00' }), 2)).toEqual([])
+    expect(incomeEntryWarnings(clt({ inss: 'R$ 4.800,00' }), 2)).toEqual([])
   })
 
   it('never blocks saving: the warnings are only advice', () => {
     const store = useIncomeStore()
-    Object.assign(store.draftIncomes[0]!, { amount: 'R$ 6.500,00', inss: 'R$ 1.300,00' })
+    Object.assign(store.draftIncomes[0]!, { amount: 'R$ 78.000,00', inss: 'R$ 15.600,00' })
 
     expect(store.canSaveDraft).toBe(true)
   })
@@ -509,8 +600,14 @@ describe('INSS and income tax checks against the payslip calculation', () => {
       [
         registration({
           incomes: [
-            { id: 1, category: 'clt', amount: 'R$ 6.500,00', inss: 'R$ 711,51', irrf: 'R$ 248,42' },
-            { id: 2, category: 'alugueis', amount: 'R$ 1.000,00', inss: '', irrf: '' },
+            {
+              id: 1,
+              category: 'clt',
+              amount: 'R$ 78.000,00',
+              inss: 'R$ 8.538,12',
+              irrf: 'R$ 2.981,04',
+            },
+            { id: 2, category: 'alugueis', amount: 'R$ 12.000,00', inss: '', irrf: '' },
             { id: 3, category: 'clt', amount: '', inss: '', irrf: '' },
           ],
         }),
@@ -533,18 +630,18 @@ describe('INSS ceiling warning (RF-12)', () => {
   const source = (id: number, inss: string) => ({
     id,
     category: 'clt' as const,
-    amount: 'R$ 6.500,00',
+    amount: 'R$ 78.000,00',
     inss,
     irrf: '',
   })
 
   it('stays quiet up to the yearly ceiling (12 × 988,09)', () => {
-    expect(inssCeilingWarning([registration({ incomes: [source(1, 'R$ 988,09')] })])).toBe('')
+    expect(inssCeilingWarning([registration({ incomes: [source(1, 'R$ 11.857,08')] })])).toBe('')
   })
 
   it('warns when two sources together pass it: CLT plus a pró-labore', () => {
     const warning = inssCeilingWarning([
-      registration({ incomes: [source(1, 'R$ 711,51'), source(2, 'R$ 330,00')] }),
+      registration({ incomes: [source(1, 'R$ 8.538,12'), source(2, 'R$ 3.960,00')] }),
     ]).replace(/\u00a0/g, ' ')
 
     expect(warning).toContain('R$ 12.498,12 por ano')
@@ -553,10 +650,10 @@ describe('INSS ceiling warning (RF-12)', () => {
 
   it('adds the form being filled to the saved registrations', () => {
     const store = useIncomeStore()
-    store.addRegistration(registration({ incomes: [source(1, 'R$ 711,51')] }))
+    store.addRegistration(registration({ incomes: [source(1, 'R$ 8.538,12')] }))
     expect(store.summaryInssWarning).toBe('')
 
-    Object.assign(store.draftIncomes[0]!, { amount: 'R$ 3.000,00', inss: 'R$ 330,00' })
+    Object.assign(store.draftIncomes[0]!, { amount: 'R$ 36.000,00', inss: 'R$ 3.960,00' })
 
     expect(store.summaryInssWarning).not.toBe('')
   })
