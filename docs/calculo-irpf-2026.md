@@ -247,7 +247,7 @@ O catálogo fica em [`src/irpf/despesas.ts`](../src/irpf/despesas.ts). A chave d
 
 ## 8. Como usar o motor
 
-A API pública fica em [`src/irpf/index.ts`](../src/irpf/index.ts). As telas convertem seus cadastros para linhas da declaração e passam para o motor, sem fazer conta própria. Atualmente, os cadastros de rendimentos e despesas ficam em memória; a persistência no Supabase ainda está planejada:
+A API pública fica em [`src/irpf/index.ts`](../src/irpf/index.ts). As telas convertem seus cadastros para linhas da declaração e passam para o motor, sem fazer conta própria. Para contas autenticadas, os dados da declaração são carregados e salvos no Supabase; a camada de persistência está em [`src/data/declaration.ts`](../src/data/declaration.ts):
 
 ```ts
 import { calcularAjusteAnual, montarEntrada } from '@/irpf'
@@ -282,7 +282,7 @@ const resultado = calcularAjusteAnual({
 
 ### 8.1 Estimativa parcial nas telas
 
-As telas de Rendas, Dependentes e Despesas usam o motor, com os dados guardados só em memória:
+As telas de Rendas, Dependentes e Despesas usam o motor com os dados da declaração carregados do Supabase:
 
 | Cadastro na tela                                        | No motor                                                   |
 | ------------------------------------------------------- | ---------------------------------------------------------- |
@@ -300,6 +300,26 @@ Para uma fonte CLT, a tela compara o INSS e o IR retido digitados com a folha me
 Duas outras proteções, também sem bloquear: `inssCeilingWarning` avisa quando o INSS somado de todas as fontes passa do teto anual (12 × 988,09 = 11.857,08, critério do RF-12), o que acontece com mais de um empregador; e o cartão lista as categorias que não são CLT ("Tratado como salário: …"), porque aluguéis, autônomo/PJ e aposentadoria passam pelo motor como se fossem salário. Quem tem uma renda de PJ sem retenção, por exemplo, paga o carnê-leão mês a mês, e esse imposto ainda não é descontado da estimativa (seção 9).
 
 A conversão fica em `buildTaxInput` e `buildDeclarationData`, em [`src/stores/income.ts`](../src/stores/income.ts). O botão "Calcular INSS e IR pelo salário" usa `calcularFolhaMensal` com os dependentes válidos, sem presumir pensão mensal. Os dependentes valem para a declaração inteira: são informados uma vez só e contam uma vez só, mesmo com várias fontes de renda. A pensão anual é cadastrada uma única vez em Despesas, com a confirmação da base legal, e só entra no ajuste da declaração; não é projetada na simulação mensal da folha, pois o total anual não informa como os pagamentos se distribuem pelos meses ou pelas fontes pagadoras. Todas as categorias de renda são tratadas como rendimento tributável; aluguéis, trabalho autônomo e aposentadoria têm regras próprias que ficam fora do MVP (seção 9), e o cartão da estimativa avisa isso.
+
+### 8.2 Persistência dos dados
+
+Cada conta autenticada tem uma declaração do ano-calendário de 2026. A camada em
+[`src/data/declaration.ts`](../src/data/declaration.ts) cria ou localiza esse registro, carrega as
+fontes, dependentes e despesas e converte os UUIDs do banco para os identificadores locais usados
+pelas telas. A aplicação aguarda o carregamento antes de exibir as telas privadas; em caso de erro,
+mostra a falha em vez de tratar o estado como uma declaração vazia.
+
+Os valores que a pessoa informa em Rendas são mensais e ficam gravados em colunas mensais próprias.
+As colunas anuais continuam preenchidas para o cálculo do ajuste. Para declarações antigas que só
+tinham valores anuais, a tela exibe um valor mensal arredondado, mas o cálculo mantém o total anual
+original até a pessoa editar aquele valor. Isso evita perder centavos na conversão anual para
+mensal e de volta para anual. Dependentes e despesas também são associados à declaração e à conta.
+As políticas RLS continuam sendo a proteção de acesso no banco; a aplicação também filtra as
+consultas pelo usuário e pela declaração.
+
+As fontes de renda antigas não tinham categoria. A migration as marca como não classificadas e a
+tela solicita uma categoria antes de salvá-las novamente. A migration também converte os valores
+legados das relações de dependentes para os códigos usados pelas telas.
 
 ## 9. Fora do escopo do MVP
 

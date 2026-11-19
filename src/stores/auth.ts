@@ -13,7 +13,7 @@ import {
 } from '@/utils/profile'
 import { useIncomeStore } from '@/stores/income'
 
-export const CONSENT_VERSION = '2026-11-06-v2'
+export const CONSENT_VERSION = '2026-11-19-v3'
 
 export const useAuthStore = defineStore('auth', () => {
   const income = useIncomeStore()
@@ -23,6 +23,29 @@ export const useAuthStore = defineStore('auth', () => {
   const recoveryPending = ref(false)
   const user = computed(() => session.value?.user ?? null)
   const isGuest = computed(() => !user.value || Boolean(user.value.is_anonymous))
+  const accountDataReady = ref(true)
+  let accountDataOwner: string | null = null
+  let accountDataGeneration = 0
+
+  const loadAccountData = async (userId: string) => {
+    const generation = ++accountDataGeneration
+    accountDataReady.value = false
+    try {
+      await income.loadAccountData(userId)
+    } catch {
+      // The store exposes the error to the app shell; do not turn a failed load into empty data.
+    } finally {
+      if (generation === accountDataGeneration && user.value?.id === userId) {
+        accountDataReady.value = true
+      }
+    }
+  }
+
+  const retryAccountData = async () => {
+    const userId = user.value?.id
+    if (!userId || user.value?.is_anonymous) return
+    await loadAccountData(userId)
+  }
 
   const profileRedirectUrl = () =>
     new URL(`${import.meta.env.BASE_URL}user`, window.location.origin).href
@@ -43,19 +66,36 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       const client = getSupabase()
       const { data } = client.auth.onAuthStateChange((event, newSession) => {
-        if (session.value?.user.id && session.value.user.id !== newSession?.user.id) {
+        const nextOwner =
+          newSession?.user && !newSession.user.is_anonymous ? newSession.user.id : null
+        const ownerChanged = accountDataOwner !== nextOwner
+        if (ownerChanged) {
           income.clearAccountData()
         }
+        accountDataOwner = nextOwner
         session.value = newSession
         recoveryPending.value = event === 'PASSWORD_RECOVERY'
         initializationError.value = ''
         ready.value = true
+        if (nextOwner) {
+          if (ownerChanged) {
+            accountDataReady.value = false
+            // Defer database requests until the auth callback releases Supabase's auth lock.
+            setTimeout(() => {
+              if (accountDataOwner === nextOwner) void loadAccountData(nextOwner)
+            }, 0)
+          }
+        } else {
+          accountDataGeneration += 1
+          accountDataReady.value = true
+        }
       })
       void client.auth
         .getSession()
         .then(({ data: sessionData, error }) => {
           if (error) throw error
           if (!session.value) session.value = sessionData.session
+          if (!sessionData.session) accountDataReady.value = true
           ready.value = true
         })
         .catch((error: unknown) => {
@@ -190,6 +230,8 @@ export const useAuthStore = defineStore('auth', () => {
     requestPasswordReset,
     resetPassword,
     recoveryPending,
+    accountDataReady,
+    retryAccountData,
     redirectNotice,
     clearRedirectNotice,
   }

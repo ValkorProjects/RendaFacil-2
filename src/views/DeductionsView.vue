@@ -43,6 +43,8 @@ const reembolsoInput = ref('')
 const editingId = ref<number | null>(null)
 const step = ref<1 | 2>(1)
 const formError = ref('')
+const saveError = ref('')
+const saving = ref(false)
 const confirmingId = ref<number | null>(null)
 
 const typesForCategory = computed(() =>
@@ -185,10 +187,11 @@ const validate = () => {
   return ''
 }
 
-const saveExpense = () => {
+const saveExpense = async () => {
   formError.value = validate()
   if (formError.value) return
 
+  saveError.value = ''
   const expense: Omit<RegisteredExpense, 'id'> = {
     ...form,
     valor_centavos: cents(valorInput.value),
@@ -198,15 +201,22 @@ const saveExpense = () => {
     pensaoIniciouEm2026: form.categoria === 'pensao' && form.pensaoIniciouEm2026,
     descricao: form.descricao.trim(),
   }
-  const saved =
-    editingId.value === null
-      ? incomeStore.addExpense(expense)
-      : incomeStore.updateExpense({ ...expense, id: editingId.value })
-  if (!saved) {
-    formError.value = 'Não foi possível salvar. Confira os dados da despesa.'
-    return
+  saving.value = true
+  try {
+    const saved =
+      editingId.value === null
+        ? await incomeStore.addExpensePersisted(expense)
+        : await incomeStore.updateExpensePersisted({ ...expense, id: editingId.value })
+    if (!saved) {
+      formError.value = 'Não foi possível salvar. Confira os dados da despesa.'
+      return
+    }
+    resetForm()
+  } catch (error) {
+    saveError.value = error instanceof Error ? error.message : 'Não foi possível salvar a despesa.'
+  } finally {
+    saving.value = false
   }
-  resetForm()
 }
 
 const editExpense = (expense: RegisteredExpense) => {
@@ -219,10 +229,15 @@ const editExpense = (expense: RegisteredExpense) => {
   window.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
-const remove = (expense: RegisteredExpense) => {
-  incomeStore.removeExpense(expense.id)
-  confirmingId.value = null
-  if (editingId.value === expense.id) resetForm()
+const remove = async (expense: RegisteredExpense) => {
+  saveError.value = ''
+  try {
+    await incomeStore.removeExpensePersisted(expense.id)
+    confirmingId.value = null
+    if (editingId.value === expense.id) resetForm()
+  } catch (error) {
+    saveError.value = error instanceof Error ? error.message : 'Não foi possível excluir a despesa.'
+  }
 }
 const expenseLabel = (expense: RegisteredExpense) =>
   expense.descricao || (TIPOS_DESPESA[expense.tipo as IdTipoDespesa]?.rotulo ?? expense.tipo)
@@ -265,6 +280,7 @@ const pensionWarning = (expense: RegisteredExpense) => {
         mas não entram na conta. Guarde os comprovantes; os dados são usados na estimativa e limpos
         ao sair da conta.
       </p>
+      <p v-if="saveError" class="field-error" role="alert">{{ saveError }}</p>
 
       <section class="form-section glass" aria-labelledby="expense-form-title">
         <div class="section-heading">
@@ -418,8 +434,14 @@ const pensionWarning = (expense: RegisteredExpense) => {
 
           <div class="form-actions">
             <button class="secondary-button" type="button" @click="step = 1">Voltar</button>
-            <button class="primary-button" type="button" @click="saveExpense">
-              {{ editingId === null ? 'Adicionar despesa' : 'Salvar alterações' }}
+            <button class="primary-button" type="button" :disabled="saving" @click="saveExpense">
+              {{
+                saving
+                  ? 'Salvando…'
+                  : editingId === null
+                    ? 'Adicionar despesa'
+                    : 'Salvar alterações'
+              }}
             </button>
             <button
               v-if="editingId !== null"

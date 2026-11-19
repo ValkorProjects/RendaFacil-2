@@ -31,12 +31,14 @@ import PageCard from '@/components/PageCard.vue'
       <h2 id="operators-title">Operadores e armazenamento</h2>
       <p>
         O Supabase processa autenticação e armazena os dados do perfil e do consentimento. A Vercel
-        hospeda e entrega o aplicativo. Os valores de rendimentos e despesas usados no cálculo ficam
-        apenas na memória da sessão e são descartados ao recarregar a página ou sair da conta; o app
-        não os grava no banco. Os dados de perfil e consentimento são mantidos enquanto a conta
-        existir e removidos com a exclusão da conta. Cópias técnicas dos operadores podem seguir os
-        prazos de retenção e backup próprios desses serviços. Os dados não são vendidos nem usados
-        para publicidade.
+        hospeda e entrega o aplicativo. Para contas autenticadas, os dados da declaração — incluindo
+        rendimentos, dependentes e despesas — são armazenados no Supabase e protegidos por políticas
+        de acesso associadas à conta. Eles são carregados ao entrar e removidos da memória local ao
+        sair; o aplicativo precisa de conexão para ler e salvar e não oferece sincronização offline.
+        Os dados de perfil, consentimento e declaração são mantidos enquanto a conta existir e
+        removidos com a exclusão da conta. Cópias técnicas dos operadores podem seguir os prazos de
+        retenção e backup próprios desses serviços. Os dados não são vendidos nem usados para
+        publicidade.
       </p>
     </section>
 

@@ -32,6 +32,7 @@ const message = ref('')
 const incomeDrafts = ref<RegisteredIncomeEntry[]>([])
 const fillIncomeLater = ref(false)
 const saveError = ref('')
+const saving = ref(false)
 const salaryErrors = ref<Record<number, string>>({})
 let nextIncomeDraftId = -1
 const addIncome = () =>
@@ -87,28 +88,42 @@ const closeForm = async () => {
   await nextTick()
   addButton.value?.focus()
 }
-const save = () => {
+const save = async () => {
   if (!canSave.value) return
   const incomes = asksIncome.value && !fillIncomeLater.value ? incomeDrafts.value : []
-  if (!store.saveDependentWithIncomes(draft.value, incomes, editingId.value)) {
+  saving.value = true
+  try {
+    if (!(await store.saveDependentWithIncomesPersisted(draft.value, incomes, editingId.value))) {
+      saveError.value =
+        'Não foi possível salvar. Confira os valores dos rendimentos e tente novamente.'
+      return
+    }
+    message.value =
+      editingId.value === undefined ? 'Dependente adicionado.' : 'Dependente atualizado.'
+    void closeForm()
+  } catch (error) {
     saveError.value =
-      'Não foi possível salvar. Confira os valores dos rendimentos e tente novamente.'
-    return
+      error instanceof Error ? error.message : 'Não foi possível salvar o dependente.'
+  } finally {
+    saving.value = false
   }
-  message.value =
-    editingId.value === undefined ? 'Dependente adicionado.' : 'Dependente atualizado.'
-  void closeForm()
 }
 // The dependent's own salary: no dependents of their own in this declaration.
 const fillFromSalary = (income: RegisteredIncomeEntry) => {
   salaryErrors.value[income.id] = fillIncomeFromSalary(income, 0)
 }
 const remove = async (dependent: RegisteredDependent) => {
-  store.removeDependent(dependent.id)
-  confirmingId.value = null
-  message.value = `${dependent.apelido} e os lançamentos vinculados foram excluídos.`
-  await nextTick()
-  addButton.value?.focus()
+  saveError.value = ''
+  try {
+    await store.removeDependentPersisted(dependent.id)
+    confirmingId.value = null
+    message.value = `${dependent.apelido} e os lançamentos vinculados foram excluídos.`
+    await nextTick()
+    addButton.value?.focus()
+  } catch (error) {
+    saveError.value =
+      error instanceof Error ? error.message : 'Não foi possível excluir o dependente.'
+  }
 }
 const pending = (id: number) => store.pendingDependents.some((dependent) => dependent.id === id)
 const linkedIncomes = (id: number) =>
@@ -150,6 +165,7 @@ const linkedIncomes = (id: number) =>
       dedução da base, não uma restituição garantida.
     </p>
     <p v-if="message" role="status">{{ message }}</p>
+    <p v-if="saveError" role="alert">{{ saveError }}</p>
     <button ref="addButton" class="button" type="button" @click="openForm()">
       Adicionar dependente
     </button>
@@ -295,7 +311,9 @@ const linkedIncomes = (id: number) =>
       <p v-if="saveError" role="alert">{{ saveError }}</p>
       <div class="actions">
         <button class="button secondary" type="button" @click="closeForm">Cancelar</button>
-        <button class="button" type="submit" :disabled="!canSave">Salvar dependente</button>
+        <button class="button" type="submit" :disabled="!canSave || saving">
+          {{ saving ? 'Salvando…' : 'Salvar dependente' }}
+        </button>
       </div>
     </form>
 

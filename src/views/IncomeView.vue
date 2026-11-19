@@ -16,11 +16,12 @@ import {
   useIncomeStore,
 } from '@/stores/income'
 
-const incomeCategories = (Object.entries(incomeCategoryLabels) as [IncomeCategory, string][]).map(
-  ([value, label]) => ({
-    value,
-    label,
-  }),
+const editableIncomeCategories = Object.entries(incomeCategoryLabels).map(([value, label]) => ({
+  value: value as IncomeCategory,
+  label,
+}))
+const incomeCategories = editableIncomeCategories.filter(
+  (category) => category.value !== 'nao_informada',
 )
 
 const router = useRouter()
@@ -30,6 +31,14 @@ const editingRegistrationId = ref<number | null>(null)
 const confirmingDeleteId = ref<number | null>(null)
 const editingIncomes = ref<RegisteredIncomeEntry[]>([])
 const salaryErrors = ref<Record<number, string>>({})
+const saving = ref(false)
+const saveError = ref('')
+const expectedSourceDraft = ref(incomeStore.expectedSources)
+const expectedSourceSaving = ref(false)
+const expectedSourceError = ref('')
+const savedSourceCount = computed(() =>
+  incomeStore.registrations.reduce((count, item) => count + item.incomes.length, 0),
+)
 
 // The payslip checks use the declaration's dependents for the holder's sources.
 const incomeWarnings = (income: RegisteredIncomeEntry | undefined) =>
@@ -81,18 +90,64 @@ const setEditingOwner = (index: number, event: Event) => {
   if (income) income.dependentId = value === '' ? null : Number(value)
 }
 
-const saveInlineEdit = () => {
-  if (editingRegistrationId.value === null || !canSaveInlineEdit.value) return
-
-  incomeStore.updateRegistration({
-    id: editingRegistrationId.value,
-    incomes: editingIncomes.value.filter((income) => cents(income.amount) > 0),
-  })
-  cancelInlineEdit()
+const setEditingCategory = (index: number, event: Event) => {
+  const income = editingIncomes.value[index]
+  if (income) income.category = (event.target as HTMLSelectElement).value as IncomeCategory
 }
 
-const saveIncomeAndReturn = () => {
-  if (incomeStore.saveDraft()) router.push({ name: 'home' })
+const saveExpectedSourceCount = async () => {
+  expectedSourceError.value = ''
+  expectedSourceSaving.value = true
+  try {
+    await incomeStore.setExpectedSourceCount(Number(expectedSourceDraft.value))
+  } catch (error) {
+    expectedSourceError.value =
+      error instanceof Error ? error.message : 'Não foi possível salvar a quantidade esperada.'
+  } finally {
+    expectedSourceSaving.value = false
+  }
+}
+
+const saveInlineEdit = async () => {
+  if (editingRegistrationId.value === null || !canSaveInlineEdit.value) return
+
+  saveError.value = ''
+  saving.value = true
+  try {
+    await incomeStore.updateRegistrationPersisted({
+      id: editingRegistrationId.value,
+      incomes: editingIncomes.value.filter((income) => cents(income.amount) > 0),
+    })
+    cancelInlineEdit()
+  } catch (error) {
+    saveError.value =
+      error instanceof Error ? error.message : 'Não foi possível salvar as alterações.'
+  } finally {
+    saving.value = false
+  }
+}
+
+const removeRegistration = async (id: number) => {
+  saveError.value = ''
+  try {
+    await incomeStore.removeRegistrationPersisted(id)
+  } catch (error) {
+    saveError.value =
+      error instanceof Error ? error.message : 'Não foi possível excluir o cadastro.'
+  }
+}
+
+const saveIncomeAndReturn = async () => {
+  saveError.value = ''
+  saving.value = true
+  try {
+    if (await incomeStore.saveDraftPersisted()) await router.push({ name: 'home' })
+  } catch (error) {
+    saveError.value =
+      error instanceof Error ? error.message : 'Não foi possível salvar os rendimentos.'
+  } finally {
+    saving.value = false
+  }
 }
 </script>
 
@@ -103,6 +158,7 @@ const saveIncomeAndReturn = () => {
         Informe os valores mensais recebidos para preparar sua declaração anual de IRPF. A
         estimativa do imposto, no fim da página, muda enquanto você digita.
       </p>
+      <p v-if="saveError" class="field-error" role="alert">{{ saveError }}</p>
 
       <section
         v-if="incomeStore.registrations.length"
@@ -114,7 +170,9 @@ const saveIncomeAndReturn = () => {
             <p class="section-kicker">Cadastros</p>
             <h2 id="saved-income-title">Rendimentos adicionados</h2>
           </div>
-          <span class="section-status">{{ incomeStore.registrations.length }}</span>
+          <span class="section-status">
+            {{ savedSourceCount }} de {{ incomeStore.expectedSources }} fontes
+          </span>
         </div>
         <div class="saved-registration-list">
           <article
@@ -133,10 +191,10 @@ const saveIncomeAndReturn = () => {
                   <button
                     class="edit-button"
                     type="button"
-                    :disabled="!canSaveInlineEdit"
+                    :disabled="!canSaveInlineEdit || saving"
                     @click="saveInlineEdit"
                   >
-                    Salvar
+                    {{ saving ? 'Salvando…' : 'Salvar' }}
                   </button>
                   <button class="remove-button" type="button" @click="cancelInlineEdit">
                     Cancelar
@@ -156,7 +214,7 @@ const saveIncomeAndReturn = () => {
                   :open="confirmingDeleteId === registration.id"
                   :item-label="`o cadastro de rendimentos ${registrationIndex + 1}`"
                   @update:open="setConfirmingDelete(registration.id, $event)"
-                  @confirm="incomeStore.removeRegistration(registration.id)"
+                  @confirm="removeRegistration(registration.id)"
                 >
                   <p>Os rendimentos deste cadastro saem da estimativa.</p>
                 </ConfirmDelete>
@@ -172,10 +230,25 @@ const saveIncomeAndReturn = () => {
                   Dependente: {{ incomeStore.incomeOwner(income) }}
                 </span>
                 <div class="saved-entry">
-                  <span>
+                  <span v-if="editingRegistrationId !== registration.id">
                     {{ incomeCategoryLabels[income.category] }}
                     <template v-if="income.dependentId == null"> · Titular</template>
                   </span>
+                  <select
+                    v-else
+                    :value="editingIncomes[index]?.category"
+                    class="field-control"
+                    aria-label="Categoria do rendimento"
+                    @change="setEditingCategory(index, $event)"
+                  >
+                    <option
+                      v-for="category in editableIncomeCategories"
+                      :key="category.value"
+                      :value="category.value"
+                    >
+                      {{ category.label }}
+                    </option>
+                  </select>
                   <Money3Component
                     v-if="editingRegistrationId === registration.id"
                     :model-value="editingIncomes[index]?.amount ?? ''"
@@ -268,6 +341,37 @@ const saveIncomeAndReturn = () => {
             <h2 id="income-title">Rendimentos do titular e dos dependentes</h2>
           </div>
           <span class="section-status">Obrigatório</span>
+        </div>
+
+        <div class="expected-sources">
+          <label class="field-label" for="expected-sources">
+            Quantas fontes pagadoras você espera lançar?
+          </label>
+          <div class="expected-sources-control">
+            <input
+              id="expected-sources"
+              v-model.number="expectedSourceDraft"
+              class="field-control"
+              type="number"
+              min="0"
+              max="100"
+              step="1"
+            />
+            <button
+              class="add-button"
+              type="button"
+              :disabled="expectedSourceSaving"
+              @click="saveExpectedSourceCount"
+            >
+              {{ expectedSourceSaving ? 'Salvando…' : 'Salvar' }}
+            </button>
+          </div>
+          <p v-if="expectedSourceError" class="field-error" role="alert">
+            {{ expectedSourceError }}
+          </p>
+          <p class="field-help">
+            {{ savedSourceCount }} de {{ incomeStore.expectedSources }} fontes cadastradas.
+          </p>
         </div>
 
         <div class="entry-list">
@@ -464,10 +568,10 @@ const saveIncomeAndReturn = () => {
       <button
         class="button add-registration-button"
         type="button"
-        :disabled="!incomeStore.canSaveDraft"
+        :disabled="!incomeStore.canSaveDraft || saving"
         @click="saveIncomeAndReturn"
       >
-        Adicionar
+        {{ saving ? 'Salvando…' : 'Adicionar' }}
       </button>
     </PageCard>
   </div>
@@ -519,6 +623,23 @@ const saveIncomeAndReturn = () => {
   align-items: flex-start;
   justify-content: space-between;
   gap: 1rem;
+}
+
+.expected-sources {
+  display: grid;
+  gap: 0.5rem;
+  max-width: 24rem;
+  margin-top: 1rem;
+}
+
+.expected-sources-control {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.expected-sources-control .field-control {
+  max-width: 8rem;
 }
 
 h2 {

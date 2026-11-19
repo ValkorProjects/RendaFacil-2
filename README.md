@@ -53,10 +53,10 @@ Em desenvolvimento, rumo ao MVP. As funcionalidades estão organizadas em issues
 | Pronto                                                                                   | Em andamento ou planejado                                    |
 | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
 | Motor de cálculo do ajuste anual e da folha mensal, com testes de casos de referência    | Questionário inicial com triagem                             |
-| Parâmetros fiscais de 2026                                                               | Persistência das rendas, dependentes e despesas no Supabase  |
-| Estrutura do banco e políticas RLS definidas em [`supabase/`](supabase/)                 | Tela final de Rendas                                         |
-| Tela de Rendas com estimativa do imposto (dados ainda só em memória)                     | Home com o resultado e o detalhe do cálculo                  |
-| Cadastro, login, perfil, consentimento e política de privacidade                         | Publicação da Edge Function de exclusão e deploy de produção |
+| Parâmetros fiscais de 2026                                                               | Tela final de Rendas                                         |
+| Estrutura do banco e políticas RLS definidas em [`supabase/`](supabase/)                 | Home com o resultado e o detalhe do cálculo                  |
+| Rendas, dependentes e despesas salvos no Supabase para contas autenticadas               | Publicação da Edge Function de exclusão e deploy de produção |
+| Cadastro, login, perfil, consentimento e política de privacidade                         |                                                              |
 | Documentação do cálculo                                                                  |                                                              |
 | Layout base: saudação, barra inferior (Home, Rendas, Despesas, Menu)                     |                                                              |
 | Cadastro de dependentes em `/dependentes`, com acesso pelo Menu e questionário de Rendas |                                                              |
@@ -77,9 +77,11 @@ reembolso só é pedido nas despesas de saúde dedutíveis. Enquanto o valor é 
 quanto a despesa pode reduzir o imposto (RF-07), e uma barra mostra o uso do limite de educação de
 cada pessoa. A pensão paga só deduz com a confirmação da base legal (decisão judicial, acordo
 homologado ou escritura pública). Ao excluir um dependente, a confirmação lista suas despesas
-e informa a remoção dos rendimentos vinculados. Todos esses dados ainda ficam em memória nesta
-sessão, sem persistência após recarregar a página. O questionário inicial separado segue planejado;
-o acesso atual ao cadastro está no formulário de Rendas.
+e informa a remoção dos rendimentos vinculados. Para contas autenticadas, rendas, dependentes e
+despesas são carregados do Supabase antes de abrir as telas privadas e gravados ao salvar. A
+sessão local é limpa ao sair da conta; os dados podem ser carregados novamente ao entrar. O
+questionário inicial separado segue planejado; o acesso atual ao cadastro está no formulário de
+Rendas.
 
 Fora do escopo do MVP: aluguel recebido, autônomo, MEI ou PJ (carnê-leão), aposentadoria, ganho de capital, bolsa de valores, renda do exterior e previdência privada. A lista completa está na [seção 9 da documentação do cálculo](docs/calculo-irpf-2026.md#9-fora-do-escopo-do-mvp).
 
@@ -195,6 +197,7 @@ npm run build
 │   ├── irpf/                  Motor de cálculo do IRPF (funções puras, valores em centavos)
 │   │   ├── parametros/        Tabelas e valores de cada ano-calendário
 │   │   └── __tests__/         Casos de referência do motor
+│   ├── data/                  Leitura e gravação da declaração no Supabase
 │   ├── lib/supabase.ts        Cliente do Supabase
 │   ├── router/                Rotas (index.ts) e abas da barra inferior (tabs.ts)
 │   ├── stores/                Estado global (sessão do usuário, rendas da tela de Rendas)
@@ -240,8 +243,20 @@ As fórmulas, a tabela de parâmetros com as fontes oficiais, as regras de arred
 
 As migrations em [`supabase/migrations/`](supabase/migrations/) definem as tabelas `perfis`,
 `declaracoes`, `fontes_pagadoras`, `dependentes` e `despesas`, com políticas RLS (Row Level Security)
-para restringir o acesso aos dados do usuário autenticado. A tela de Rendas ainda mantém rendimentos
-e dependentes apenas em memória; a persistência deles no Supabase ainda está planejada.
+para restringir o acesso aos dados do usuário autenticado. A declaração de 2026 é criada ou
+localizada no primeiro carregamento. Rendimentos mensais são preservados para as telas e os totais
+anuais são usados no cálculo da declaração. As tabelas também guardam dependentes e despesas; a
+aplicação filtra por usuário e declaração além das políticas RLS. Se o carregamento falhar, as telas
+privadas não exibem uma declaração vazia e permitem tentar novamente.
+
+Antes de publicar esta versão, aplique as migrations pendentes no projeto Supabase configurado:
+
+```bash
+npx supabase db push
+```
+
+Uma falha de gravação é informada na tela e não substitui os dados locais que ainda não foram
+salvos. O app precisa de conexão para ler e gravar; não há sincronização offline.
 
 ### Conectar um projeto
 

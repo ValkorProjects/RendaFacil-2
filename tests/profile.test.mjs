@@ -84,6 +84,8 @@ setActivePinia(pinia)
 const auth = useAuthStore()
 const { useIncomeStore } = await server.ssrLoadModule('/src/stores/income.ts')
 const income = useIncomeStore()
+// These profile tests isolate auth HTTP behavior; persistence has dedicated Supabase-mocked tests.
+income.loadAccountData = async () => {}
 
 after(async () => {
   auth.$dispose()

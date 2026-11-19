@@ -675,8 +675,8 @@ async function signOut() {
                       <RouterLink :to="{ name: 'privacy' }" target="_blank">
                         política de privacidade
                       </RouterLink>
-                      e autorizo o uso dos meus dados, inclusive despesas de saúde, para calcular a
-                      estimativa do meu Imposto de Renda.
+                      e autorizo o uso e o armazenamento no Supabase dos meus dados, inclusive
+                      despesas de saúde, para calcular a estimativa do meu Imposto de Renda.
                     </span>
                   </label>
                   <button type="submit" class="button access-submit">

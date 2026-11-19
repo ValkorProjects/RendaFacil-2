@@ -1,4 +1,4 @@
-import { computed, ref } from 'vue'
+import { computed, ref, shallowRef } from 'vue'
 import { defineStore } from 'pinia'
 import {
   calcularAjusteAnual,
@@ -14,17 +14,36 @@ import {
 } from '@/irpf'
 import { cents, formatCurrency, formatMoneyInput } from '@/utils/currency'
 import { dependentError, type DependentFields, type RegisteredDependent } from '@/utils/dependents'
+import {
+  deleteDependent as deletePersistedDependent,
+  deleteExpense as deletePersistedExpense,
+  deleteRegistration as deletePersistedRegistration,
+  loadDeclaration,
+  saveDependent as savePersistedDependent,
+  saveExpense as savePersistedExpense,
+  saveExpectedSources,
+  saveRegistration as savePersistedRegistration,
+  annualizedIncomeValue,
+  type DeclarationContext,
+} from '@/data/declaration'
 export type { RegisteredDependent } from '@/utils/dependents'
 
 const MONTHS_PER_YEAR = 12
 const annualize = (amountInCents: number) => amountInCents * MONTHS_PER_YEAR
 
 export type IncomeCategory =
-  'clt' | 'proLabore' | 'autonomo' | 'aposentadoria' | 'alugueis' | 'pensaoAlimenticia'
+  | 'clt'
+  | 'proLabore'
+  | 'autonomo'
+  | 'aposentadoria'
+  | 'alugueis'
+  | 'pensaoAlimenticia'
+  | 'nao_informada'
 
 // RF-13: an expense typed on the Despesas screen. The engine decides whether it deducts.
 export interface RegisteredExpense extends RegistroDespesa {
   id: number
+  dbId?: string
   // Payment date in 2026 (YYYY-MM-DD).
   data: string
   // Optional; never a diagnosis.
@@ -37,6 +56,7 @@ export interface RegisteredExpense extends RegistroDespesa {
 
 export interface RegisteredIncomeEntry {
   id: number
+  dbId?: string
   category: IncomeCategory
   amount: string
   // INSS and income tax withheld from `amount` each month (payslip, or the annual statement ÷ 12)
@@ -44,11 +64,16 @@ export interface RegisteredIncomeEntry {
   irrf: string
   // Missing on older session entries means the holder.
   dependentId?: number | null
+  annualizedOverride?: {
+    monthly: { amount: number; inss: number; irrf: number }
+    annual: { amount: number; inss: number; irrf: number }
+  }
 }
 
 // One "Adicionar" on the income screen: the income sources typed together.
 export interface IncomeRegistration {
   id: number
+  dbId?: string
   incomes: RegisteredIncomeEntry[]
 }
 
@@ -78,6 +103,9 @@ const newIncomeEntry = (id: number): RegisteredIncomeEntry => ({
 
 // RF-12: nothing can be withheld beyond the income it was withheld from.
 export const incomeEntryError = (entry: RegisteredIncomeEntry) => {
+  if (entry.category === 'nao_informada') {
+    return 'Selecione a categoria desta fonte de renda antes de salvar.'
+  }
   const amount = cents(entry.amount)
   if (entry.category === 'pensaoAlimenticia' && (cents(entry.inss) || cents(entry.irrf))) {
     return 'Pensão alimentícia recebida é isenta: deixe INSS e IR retido zerados.'
@@ -239,13 +267,16 @@ export const buildDeclarationData = (
   fontes: registrations.flatMap((registration) =>
     registration.incomes
       .filter(
-        (income) => isIncludedIncome(income, household) && income.category !== 'pensaoAlimenticia',
+        (income) =>
+          isIncludedIncome(income, household) &&
+          income.category !== 'pensaoAlimenticia' &&
+          income.category !== 'nao_informada',
       )
       .map((income) => ({
         dependente_id: income.dependentId == null ? null : String(income.dependentId),
-        rendimentos_centavos: annualize(cents(income.amount)),
-        previdencia_centavos: annualize(cents(income.inss)),
-        irrf_centavos: annualize(cents(income.irrf)),
+        rendimentos_centavos: annualizedIncomeValue(income, 'amount'),
+        previdencia_centavos: annualizedIncomeValue(income, 'inss'),
+        irrf_centavos: annualizedIncomeValue(income, 'irrf'),
       })),
   ),
   dependentes: household.dependents.map((dependent) => ({
@@ -314,11 +345,17 @@ export const incomeCategoryLabels: Record<IncomeCategory, string> = {
   aposentadoria: 'Aposentadoria / Pensão',
   alugueis: 'Aluguéis',
   pensaoAlimenticia: 'Pensão alimentícia recebida (isenta)',
+  nao_informada: 'Categoria não informada (classifique)',
 }
 
 export const useIncomeStore = defineStore('income', () => {
   const registrations = ref<IncomeRegistration[]>([])
   let nextDraftId = 1
+  const persistenceContext = shallowRef<DeclarationContext | null>(null)
+  const expectedSources = ref(1)
+  const accountDataLoading = ref(false)
+  const accountDataError = ref('')
+  let loadGeneration = 0
 
   // The income sources being typed, saved as one registration by "Adicionar".
   const draftIncomes = ref<RegisteredIncomeEntry[]>([newIncomeEntry(nextDraftId++)])
@@ -334,9 +371,52 @@ export const useIncomeStore = defineStore('income', () => {
     expenses: expenses.value,
   }))
 
+  const loadAccountData = async (userId: string) => {
+    const generation = ++loadGeneration
+    accountDataLoading.value = true
+    accountDataError.value = ''
+    try {
+      const snapshot = await loadDeclaration(userId)
+      if (generation !== loadGeneration) return
+      registrations.value = snapshot.registrations
+      dependents.value = snapshot.dependents
+      expenses.value = snapshot.expenses
+      expectedSources.value = snapshot.expectedSources
+      persistenceContext.value = { userId, declarationId: snapshot.declarationId }
+      nextDraftId =
+        Math.max(
+          0,
+          ...registrations.value.flatMap((registration) => [
+            registration.id,
+            ...registration.incomes.map((income) => income.id),
+          ]),
+          ...dependents.value.map((dependent) => dependent.id),
+          ...expenses.value.map((expense) => expense.id),
+        ) + 1
+      resetDraft()
+    } catch (error) {
+      if (generation === loadGeneration) {
+        accountDataError.value = error instanceof Error ? error.message : String(error)
+      }
+      throw error
+    } finally {
+      if (generation === loadGeneration) accountDataLoading.value = false
+    }
+  }
+
+  const setExpectedSourceCount = async (count: number) => {
+    if (!Number.isSafeInteger(count) || count < 0 || count > 100) {
+      throw new Error('Informe um número de fontes entre 0 e 100.')
+    }
+    const context = persistenceContext.value
+    if (context) await saveExpectedSources(context, count)
+    expectedSources.value = count
+  }
+
   const addRegistration = (registration: IncomeRegistration) => {
     registrations.value.push({
       id: registration.id,
+      dbId: registration.dbId,
       incomes: registration.incomes.map((income) => ({ ...income })),
     })
   }
@@ -351,6 +431,7 @@ export const useIncomeStore = defineStore('income', () => {
 
     registrations.value[index] = {
       id: registration.id,
+      dbId: registration.dbId,
       incomes: registration.incomes.map((income) => ({ ...income })),
     }
   }
@@ -422,13 +503,20 @@ export const useIncomeStore = defineStore('income', () => {
     if (!saveDependent(fields, id)) return false
     const dependentId = id ?? dependents.value[dependents.value.length - 1]!.id
     for (const registration of registrations.value) {
-      registration.incomes = registration.incomes.map((income) => {
-        const replacement = incomes.find((entry) => entry.id === income.id)
-        return income.dependentId === dependentId && replacement
-          ? { ...replacement, dependentId }
-          : income
-      })
+      registration.incomes = registration.incomes
+        .filter(
+          (income) =>
+            income.dependentId !== dependentId ||
+            incomes.some((replacement) => replacement.id === income.id),
+        )
+        .map((income) => {
+          const replacement = incomes.find((entry) => entry.id === income.id)
+          return income.dependentId === dependentId && replacement
+            ? { ...replacement, dependentId }
+            : income
+        })
     }
+    registrations.value = registrations.value.filter((registration) => registration.incomes.length)
     const added = incomes
       .filter((income) => income.id < 0)
       .map((income) => ({ ...income, id: nextDraftId++, dependentId }))
@@ -478,7 +566,9 @@ export const useIncomeStore = defineStore('income', () => {
       draftIncomes.value
         .filter(
           (income) =>
-            isIncludedIncome(income, household.value) && income.category !== 'pensaoAlimenticia',
+            isIncludedIncome(income, household.value) &&
+            income.category !== 'pensaoAlimenticia' &&
+            income.category !== 'nao_informada',
         )
         .reduce((total, income) => total + cents(income.amount), 0),
     ),
@@ -496,6 +586,11 @@ export const useIncomeStore = defineStore('income', () => {
   }
 
   const clearAccountData = () => {
+    loadGeneration += 1
+    persistenceContext.value = null
+    expectedSources.value = 1
+    accountDataLoading.value = false
+    accountDataError.value = ''
     registrations.value = []
     resetDraft()
     dependents.value = []
@@ -508,6 +603,7 @@ export const useIncomeStore = defineStore('income', () => {
     const registration: IncomeRegistration = {
       // A counter, not Date.now(): two saves in the same millisecond would share an id.
       id: draftEditingRegistrationId.value ?? nextDraftId++,
+      dbId: registrations.value.find((item) => item.id === draftEditingRegistrationId.value)?.dbId,
       incomes: draftIncomes.value
         .filter((income) => cents(income.amount) > 0)
         .map((income) => ({ ...income })),
@@ -521,6 +617,216 @@ export const useIncomeStore = defineStore('income', () => {
     }
     resetDraft()
     return true
+  }
+
+  const saveDraftPersisted = async () => {
+    const context = persistenceContext.value
+    if (!context) return saveDraft()
+    if (!canSaveDraft.value) return false
+
+    const registration: IncomeRegistration = {
+      id: draftEditingRegistrationId.value ?? nextDraftId++,
+      dbId: registrations.value.find((item) => item.id === draftEditingRegistrationId.value)?.dbId,
+      incomes: draftIncomes.value
+        .filter((income) => cents(income.amount) > 0)
+        .map((income) => ({ ...income })),
+    }
+    const index = registrations.value.findIndex((item) => item.id === registration.id)
+    const previous = index < 0 ? undefined : registrations.value[index]
+    const saved = await savePersistedRegistration(
+      context,
+      { ...registration, dbId: registration.dbId ?? previous?.dbId },
+      dependents.value,
+      previous,
+    )
+    if (index < 0) registrations.value.push(saved)
+    else registrations.value[index] = saved
+    resetDraft()
+    return true
+  }
+
+  const updateRegistrationPersisted = async (registration: IncomeRegistration) => {
+    const context = persistenceContext.value
+    if (!context) return updateRegistration(registration)
+    const previous = registrations.value.find((item) => item.id === registration.id)
+    if (!previous) return
+    const saved = await savePersistedRegistration(
+      context,
+      { ...registration, dbId: registration.dbId ?? previous.dbId },
+      dependents.value,
+      previous,
+    )
+    updateRegistration(saved)
+  }
+
+  const removeRegistrationPersisted = async (id: number) => {
+    const registration = registrations.value.find((item) => item.id === id)
+    if (!registration) return
+    const context = persistenceContext.value
+    if (context) {
+      if (!registration.dbId) {
+        throw new Error(
+          'Este cadastro não tem um identificador persistido. Atualize os dados e tente novamente.',
+        )
+      }
+      await deletePersistedRegistration(context, registration)
+    }
+    removeRegistration(id)
+  }
+
+  const saveDependentWithIncomesPersisted = async (
+    fields: DependentFields,
+    incomes: readonly RegisteredIncomeEntry[],
+    id?: number,
+  ) => {
+    const context = persistenceContext.value
+    if (!context) return saveDependentWithIncomes(fields, incomes, id)
+    const existing = id === undefined ? [] : incomesForDependent(id)
+    if (
+      dependentError(fields) ||
+      new Set(incomes.map((income) => income.id)).size !== incomes.length ||
+      incomes.some(
+        (income) =>
+          cents(income.amount) <= 0 ||
+          !Number.isSafeInteger(cents(income.amount) * MONTHS_PER_YEAR) ||
+          incomeEntryError(income) ||
+          !Object.hasOwn(incomeCategoryLabels, income.category) ||
+          (income.id >= 0 && !existing.some((entry) => entry.id === income.id)),
+      )
+    ) {
+      return false
+    }
+
+    const current = id === undefined ? undefined : dependents.value.find((item) => item.id === id)
+    if (id !== undefined && !current) return false
+    const localId = id ?? nextDraftId++
+    const dbId = await savePersistedDependent(context, {
+      ...fields,
+      dbId: current?.dbId,
+    })
+    const dependent: RegisteredDependent = {
+      ...fields,
+      apelido: fields.apelido.trim(),
+      id: localId,
+      dbId,
+    }
+    const nextDependents = current
+      ? dependents.value.map((item) => (item.id === localId ? dependent : item))
+      : [...dependents.value, dependent]
+    const savedGroups: IncomeRegistration[] = []
+    try {
+      for (const registration of registrations.value) {
+        const dependentIncomes = registration.incomes.filter(
+          (income) => income.dependentId === localId,
+        )
+        if (!dependentIncomes.length) continue
+        const updated = {
+          ...registration,
+          incomes: registration.incomes
+            .filter(
+              (income) =>
+                income.dependentId !== localId ||
+                incomes.some((replacement) => replacement.id === income.id),
+            )
+            .map((income) => {
+              const replacement = incomes.find((entry) => entry.id === income.id)
+              return income.dependentId === localId && replacement
+                ? { ...replacement, dependentId: localId }
+                : income
+            }),
+        }
+        savedGroups.push(
+          await savePersistedRegistration(context, updated, nextDependents, registration),
+        )
+      }
+
+      const added = incomes
+        .filter((income) => income.id < 0)
+        .map((income) => ({ ...income, id: nextDraftId++, dependentId: localId }))
+      if (added.length) {
+        savedGroups.push(
+          await savePersistedRegistration(
+            context,
+            { id: nextDraftId++, incomes: added },
+            nextDependents,
+          ),
+        )
+      }
+    } catch (error) {
+      if (!current) {
+        try {
+          await deletePersistedDependent(context, dbId)
+        } catch (rollbackError) {
+          throw new Error(
+            `Não foi possível salvar os rendimentos do dependente e também falhou a limpeza do cadastro: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}`,
+          )
+        }
+      }
+      throw error
+    }
+
+    if (current) {
+      const index = dependents.value.findIndex((item) => item.id === localId)
+      dependents.value[index] = dependent
+    } else {
+      dependents.value.push(dependent)
+    }
+    for (const group of savedGroups) {
+      const index = registrations.value.findIndex((item) => item.id === group.id)
+      if (index < 0) registrations.value.push(group)
+      else if (group.incomes.length) registrations.value[index] = group
+      else registrations.value.splice(index, 1)
+    }
+    return true
+  }
+
+  const removeDependentPersisted = async (id: number) => {
+    const dependent = dependents.value.find((item) => item.id === id)
+    if (!dependent) return
+    const context = persistenceContext.value
+    if (context) {
+      if (!dependent.dbId) {
+        throw new Error(
+          'Este dependente não tem um identificador persistido. Atualize os dados e tente novamente.',
+        )
+      }
+      await deletePersistedDependent(context, dependent.dbId)
+    }
+    removeDependent(id)
+  }
+
+  const addExpensePersisted = async (expense: Omit<RegisteredExpense, 'id'>) => {
+    if (expenseError(expense, dependents.value)) return false
+    const context = persistenceContext.value
+    if (!context) return addExpense(expense)
+    const saved = await savePersistedExpense(context, expense, dependents.value)
+    expenses.value.push({ ...cleanExpense(expense), id: nextDraftId++, dbId: saved.dbId })
+    return true
+  }
+
+  const updateExpensePersisted = async (expense: RegisteredExpense) => {
+    const index = expenses.value.findIndex((item) => item.id === expense.id)
+    if (index < 0 || expenseError(expense, dependents.value)) return false
+    const context = persistenceContext.value
+    if (!context) return updateExpense(expense)
+    const saved = await savePersistedExpense(context, expense, dependents.value)
+    expenses.value[index] = { ...cleanExpense(expense), dbId: saved.dbId, id: expense.id }
+    return true
+  }
+
+  const removeExpensePersisted = async (id: number) => {
+    const expense = expenses.value.find((item) => item.id === id)
+    if (!expense) return
+    const context = persistenceContext.value
+    if (context) {
+      if (!expense.dbId) {
+        throw new Error(
+          'Esta despesa não tem um identificador persistido. Atualize os dados e tente novamente.',
+        )
+      }
+      await deletePersistedExpense(context, expense.dbId)
+    }
+    removeExpense(id)
   }
 
   const includedIncomes = computed(() =>
@@ -546,7 +852,10 @@ export const useIncomeStore = defineStore('income', () => {
   const taxableTotal = computed(() =>
     annualize(
       includedIncomes.value
-        .filter((income) => income.category !== 'pensaoAlimenticia')
+        .filter(
+          (income) =>
+            income.category !== 'pensaoAlimenticia' && income.category !== 'nao_informada',
+        )
         .reduce((total, income) => total + cents(income.amount), 0),
     ),
   )
@@ -610,6 +919,11 @@ export const useIncomeStore = defineStore('income', () => {
 
   return {
     registrations,
+    expectedSources,
+    accountDataLoading,
+    accountDataError,
+    loadAccountData,
+    setExpectedSourceCount,
     items,
     taxableTotal,
     exemptTotal,
@@ -646,6 +960,14 @@ export const useIncomeStore = defineStore('income', () => {
     fillDraftIncomeFromSalary,
     removeDraftIncome,
     saveDraft,
+    saveDraftPersisted,
+    updateRegistrationPersisted,
+    removeRegistrationPersisted,
+    saveDependentWithIncomesPersisted,
+    removeDependentPersisted,
+    addExpensePersisted,
+    updateExpensePersisted,
+    removeExpensePersisted,
     clearAccountData,
   }
 })

@@ -7,6 +7,7 @@ export const relationshipLabels = {
 
 export interface RegisteredDependent {
   id: number
+  dbId?: string
   apelido: string
   relacao: keyof typeof relationshipLabels
   em_outra_declaracao: boolean
