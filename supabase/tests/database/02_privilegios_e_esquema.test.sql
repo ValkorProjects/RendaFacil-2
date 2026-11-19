@@ -9,7 +9,7 @@ begin;
 create extension if not exists pgtap with schema extensions;
 set local search_path = public, extensions;
 
-select plan(17);
+select plan(19);
 
 -- RLS ligada em toda tabela -------------------------------------------------------------------
 
@@ -58,9 +58,11 @@ reset role;
 
 -- authenticated: só SELECT, INSERT, UPDATE e DELETE -------------------------------------------
 -- O RLS não vale para TRUNCATE, TRIGGER, REFERENCES nem MAINTAIN, então esses ficam de fora.
+-- Em perfis, só SELECT: o perfil e o registro do aceite são gravados pelos triggers de cadastro
+-- (RF-04), e o usuário não pode alterá-los nem apagá-los.
 
-select table_privs_are('public', 'perfis', 'authenticated', array['SELECT', 'INSERT', 'UPDATE', 'DELETE'],
-  'authenticated tem só SELECT, INSERT, UPDATE e DELETE em perfis');
+select table_privs_are('public', 'perfis', 'authenticated', array['SELECT'],
+  'authenticated tem só SELECT em perfis');
 select table_privs_are('public', 'declaracoes', 'authenticated', array['SELECT', 'INSERT', 'UPDATE', 'DELETE'],
   'authenticated tem só SELECT, INSERT, UPDATE e DELETE em declaracoes');
 select table_privs_are('public', 'dependentes', 'authenticated', array['SELECT', 'INSERT', 'UPDATE', 'DELETE'],
@@ -96,6 +98,29 @@ select is_empty(
      from information_schema.columns
      where table_schema = 'public' and column_name ~* '(cpf|nascimento|nasc_|diagnos)' $$,
   'nenhuma coluna de CPF, data de nascimento ou diagnóstico');
+
+-- Caminhos que ignoram a RLS ------------------------------------------------------------------
+-- Uma view roda com os privilégios do dono e mostra as linhas de todos, a menos que seja
+-- security_invoker. Uma função security definer também ignora a RLS, então a execução dela fica
+-- revogada de anon e authenticated (inclusive as de trigger, que o Postgres chama sem precisar
+-- desse privilégio).
+
+select is_empty(
+  $$ select c.relname
+     from pg_class c
+     join pg_namespace n on n.oid = c.relnamespace
+     where n.nspname = 'public' and c.relkind in ('v', 'm')
+       and not coalesce(c.reloptions @> array['security_invoker=true'], false) $$,
+  'nenhuma view de public ignora a RLS (todas com security_invoker)');
+
+select is_empty(
+  $$ select p.proname
+     from pg_proc p
+     join pg_namespace n on n.oid = p.pronamespace
+     where n.nspname = 'public' and p.prosecdef
+       and (has_function_privilege('anon', p.oid, 'EXECUTE')
+            or has_function_privilege('authenticated', p.oid, 'EXECUTE')) $$,
+  'nenhuma função security definer de public é executável por anon ou authenticated');
 
 select * from finish();
 rollback;

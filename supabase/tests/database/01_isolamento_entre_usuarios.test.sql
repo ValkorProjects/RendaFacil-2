@@ -11,15 +11,19 @@ begin;
 create extension if not exists pgtap with schema extensions;
 set local search_path = public, extensions;
 
-select plan(47);
+select plan(49);
 
 -- Fixtures, como postgres ---------------------------------------------------------------------
 
--- O trigger de cadastro (quando existir) exige o consentimento nos metadados e já cria o perfil;
--- por isso o insert em perfis atualiza a linha se ela existir.
+-- Os triggers de cadastro exigem o consentimento nos metadados e já criam o perfil e a declaração
+-- de 2026. Por isso o insert em perfis atualiza a linha se ela existir, e as declarações criadas
+-- pelo trigger são apagadas, para as fixtures usarem ids fixos (com ou sem o trigger).
 insert into auth.users (id, email, raw_user_meta_data) values
   ('aaaaaaaa-0000-0000-0000-000000000001', 'a@teste.local', '{"consentimento_versao": "teste"}'),
   ('bbbbbbbb-0000-0000-0000-000000000002', 'b@teste.local', '{"consentimento_versao": "teste"}');
+
+delete from public.declaracoes
+  where user_id in ('aaaaaaaa-0000-0000-0000-000000000001', 'bbbbbbbb-0000-0000-0000-000000000002');
 
 insert into public.perfis (id, nome, consentimento_versao, consentimento_em) values
   ('aaaaaaaa-0000-0000-0000-000000000001', 'A', 'teste', now()),
@@ -76,10 +80,14 @@ select is_empty($$ select id from public.fontes_pagadoras where user_id = 'aaaaa
 select is_empty($$ select id from public.despesas where user_id = 'aaaaaaaa-0000-0000-0000-000000000001' $$,
   'B não lê as despesas de A');
 
--- B tenta alterar e apagar as linhas de A. A RLS esconde as linhas, então os comandos não dão
--- erro: afetam zero linhas. O efeito é conferido como postgres logo abaixo.
+-- B tenta alterar e apagar as linhas de A. Em perfis, authenticated só tem SELECT (RF-04: o
+-- registro do aceite não pode ser alterado), então o comando dá erro de privilégio. Nas outras
+-- tabelas, a RLS esconde as linhas e os comandos afetam zero linhas. O efeito é conferido como
+-- postgres logo abaixo.
 
-update public.perfis set nome = 'alterado por B' where id = 'aaaaaaaa-0000-0000-0000-000000000001';
+select throws_ok(
+  $$ update public.perfis set nome = 'alterado por B' where id = 'aaaaaaaa-0000-0000-0000-000000000001' $$,
+  '42501', null, 'B não tem privilégio de UPDATE em perfis');
 update public.declaracoes set fontes_esperadas = 99 where id = 'aaaaaaaa-0000-0000-0000-0000000000d1';
 update public.dependentes set apelido = 'alterado por B' where id = 'aaaaaaaa-0000-0000-0000-0000000000e1';
 update public.fontes_pagadoras set rendimentos_centavos = 1 where id = 'aaaaaaaa-0000-0000-0000-0000000000f1';
@@ -106,7 +114,9 @@ delete from public.despesas where user_id = 'aaaaaaaa-0000-0000-0000-00000000000
 delete from public.fontes_pagadoras where user_id = 'aaaaaaaa-0000-0000-0000-000000000001';
 delete from public.dependentes where user_id = 'aaaaaaaa-0000-0000-0000-000000000001';
 delete from public.declaracoes where user_id = 'aaaaaaaa-0000-0000-0000-000000000001';
-delete from public.perfis where id = 'aaaaaaaa-0000-0000-0000-000000000001';
+select throws_ok(
+  $$ delete from public.perfis where id = 'aaaaaaaa-0000-0000-0000-000000000001' $$,
+  '42501', null, 'B não tem privilégio de DELETE em perfis');
 
 reset role;
 

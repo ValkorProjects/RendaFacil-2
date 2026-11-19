@@ -14,6 +14,11 @@ insert into auth.users (id, email, raw_user_meta_data) values
   ('aaaaaaaa-0000-0000-0000-000000000001', 'a@teste.local', '{"consentimento_versao": "teste"}'),
   ('bbbbbbbb-0000-0000-0000-000000000002', 'b@teste.local', '{"consentimento_versao": "teste"}');
 
+-- O trigger de cadastro já cria a declaração de 2026. Ela é apagada para as fixtures usarem ids
+-- fixos (com ou sem o trigger).
+delete from public.declaracoes
+  where user_id in ('aaaaaaaa-0000-0000-0000-000000000001', 'bbbbbbbb-0000-0000-0000-000000000002');
+
 insert into public.perfis (id, nome, consentimento_versao, consentimento_em) values
   ('aaaaaaaa-0000-0000-0000-000000000001', 'A', 'teste', now()),
   ('bbbbbbbb-0000-0000-0000-000000000002', 'B', 'teste', now())

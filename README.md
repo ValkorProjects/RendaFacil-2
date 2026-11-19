@@ -285,7 +285,8 @@ O app fala com o Supabase direto do navegador, com a chave pública. A única ba
 
 - um usuário não lê, não altera, não apaga e não cria dados de outro, nem dentro da declaração de outro;
 - `anon` não tem nenhum privilégio, e `authenticated` tem só `SELECT`, `INSERT`, `UPDATE` e `DELETE` (em `perfis`, só `SELECT`: o registro do aceite não pode ser alterado);
-- toda tabela de `public` tem RLS ligada;
+- toda tabela de `public` tem RLS ligada, nenhuma view ignora a RLS e nenhuma função `security definer` pode ser chamada por `anon` ou `authenticated`;
+- o cadastro cria o perfil e a declaração de 2026, é recusado sem o aceite da política de privacidade, e o usuário não altera nem apaga o registro do aceite;
 - apagar o usuário em `auth.users` apaga todas as linhas dele;
 - dinheiro fica só em `bigint`, e não há colunas de CPF, data de nascimento ou diagnóstico.
 
@@ -311,7 +312,7 @@ Para desligar os containers ao terminar:
 npx supabase stop
 ```
 
-No CI, o job `database` roda esses testes nos pull requests que mudam algo em `supabase/`.
+No CI, o job `database` roda esses testes nos pull requests que mudam algo em `supabase/`, no `.github/workflows/ci.yml` ou no `package.json` (que fixa a versão da CLI do Supabase).
 
 Uma tabela nova em `public` precisa de RLS ligada, de políticas e de `revoke` dos privilégios que o Supabase concede por padrão a `anon` e `authenticated`. Sem isso, os testes falham.
 
