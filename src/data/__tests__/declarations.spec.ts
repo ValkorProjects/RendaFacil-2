@@ -8,6 +8,7 @@ import {
 import { createIncomeMapper } from '../incomeMapper'
 import { databaseMock as db, USER_A, USER_B, declaration } from './supabaseMock'
 import { useIncomeStore } from '@/stores/income'
+import { formatMoneyInput } from '@/utils/currency'
 import { emptyDependent } from '@/utils/dependents'
 
 vi.mock('@/lib/supabase', () => ({ getSupabase: () => db.client }))
@@ -39,6 +40,7 @@ describe('RF · persistence with a mocked Supabase client', () => {
         },
       ],
       household: { dependents: [], expenses: [] },
+      expectedStatements: 1,
     }
     const randomUuid = vi.spyOn(crypto, 'randomUUID').mockImplementation(() => {
       throw new Error('crypto.randomUUID unavailable')
@@ -308,6 +310,102 @@ describe('RF · persistence with a mocked Supabase client', () => {
       irrf_13_centavos: 9876,
       plr_centavos: 12345,
     })
+  })
+
+  it('saves the company, 13º, IRRF on the 13º and PLR with the source and brings them back on reload', async () => {
+    let store = await connect()
+    fill(store)
+    Object.assign(store.draftIncomes[0]!, {
+      employer: '  Empresa A  ',
+      thirteenth: 'R$ 6.500,00',
+      thirteenthIrrf: 'R$ 100,00',
+      profitSharing: 'R$ 2.000,00',
+    })
+    expect(await store.saveDraft()).toBe(true)
+
+    // The yearly figures are stored as typed (not ÷ 12) and the company goes in `nome`.
+    expect(db.state.sources[0]).toMatchObject({
+      nome: 'Empresa A',
+      categoria: 'clt',
+      decimo_terceiro_centavos: 650_000,
+      irrf_13_centavos: 10_000,
+      plr_centavos: 200_000,
+    })
+    expect(store.exclusiveTaxationTotal).toBe(850_000)
+
+    setActivePinia(createPinia())
+    store = useIncomeStore()
+    await store.loadAccount(USER_A)
+    expect(store.registrations[0]!.incomes[0]).toMatchObject({
+      employer: 'Empresa A',
+      thirteenth: formatMoneyInput(650_000),
+      thirteenthIrrf: formatMoneyInput(10_000),
+      profitSharing: formatMoneyInput(200_000),
+    })
+    expect(store.exclusiveTaxationTotal).toBe(850_000)
+  })
+
+  it('stores the category as the name when there is no company, and reads it back as empty', async () => {
+    let store = await connect()
+    fill(store)
+    expect(await store.saveDraft()).toBe(true)
+    expect(db.state.sources[0]).toMatchObject({
+      nome: 'clt',
+      decimo_terceiro_centavos: 0,
+      irrf_13_centavos: 0,
+      plr_centavos: 0,
+    })
+
+    setActivePinia(createPinia())
+    store = useIncomeStore()
+    await store.loadAccount(USER_A)
+    expect(store.registrations[0]!.incomes[0]).toMatchObject({
+      employer: '',
+      thirteenth: '',
+      thirteenthIrrf: '',
+      profitSharing: '',
+    })
+  })
+
+  it('saves how many companies paid a salary, keeps it within 0 and 20 and survives a reload', async () => {
+    let store = await connect()
+    fill(store)
+    await store.saveDraft()
+    expect(store.expectedStatements).toBe(1)
+
+    expect(await store.setExpectedStatements(3)).toBe(true)
+    expect(db.state.declaration?.fontes_esperadas).toBe(3)
+    expect(store.estimateStatus).toContain('Falta lançar 2 empresas que pagaram salário.')
+
+    // The same number saves nothing.
+    const calls = db.rpc.mock.calls.length
+    expect(await store.setExpectedStatements(3)).toBe(false)
+    expect(db.rpc.mock.calls.length).toBe(calls)
+
+    expect(await store.setExpectedStatements(25)).toBe(true)
+    expect(store.expectedStatements).toBe(20)
+    expect(await store.setExpectedStatements(-4)).toBe(true)
+    expect(store.expectedStatements).toBe(0)
+    expect(await store.setExpectedStatements(3)).toBe(true)
+
+    setActivePinia(createPinia())
+    store = useIncomeStore()
+    await store.loadAccount(USER_A)
+    expect(store.expectedStatements).toBe(3)
+    expect(store.estimateStatus).toContain('Falta lançar 2 empresas que pagaram salário.')
+  })
+
+  it('keeps the saved count when saving it fails', async () => {
+    const store = await connect()
+    const errors = captureExpectedErrors()
+    fill(store)
+    await store.saveDraft()
+    db.fail('write')
+
+    expect(await store.setExpectedStatements(4)).toBe(false)
+    expect(store.expectedStatements).toBe(1)
+    expect(store.saveError).toContain('Não foi possível salvar')
+    expect(errors).toHaveBeenCalled()
   })
 
   it('persists changes to fontes_esperadas without resetting it on unrelated saves', async () => {

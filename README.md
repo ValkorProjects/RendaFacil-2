@@ -53,15 +53,17 @@ Em desenvolvimento, rumo ao MVP. As funcionalidades estão organizadas em issues
 | Pronto                                                                                   | Em andamento ou planejado                                    |
 | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
 | Motor de cálculo do ajuste anual e da folha mensal, com testes de casos de referência    | Questionário inicial com triagem                             |
-| Parâmetros fiscais de 2026                                                               | —                                                            |
-| Estrutura do banco e políticas RLS definidas em [`supabase/`](supabase/)                 | Tela final de Rendas                                         |
-| Tela de Rendas com estimativa do imposto                                                 | Home com o resultado e o detalhe do cálculo                  |
-| Cadastro, login, perfil, consentimento e política de privacidade                         | Publicação da Edge Function de exclusão e deploy de produção |
-| Documentação do cálculo                                                                  | —                                                            |
-| Layout base: saudação, barra inferior (Home, Rendas, Despesas, Menu)                     | —                                                            |
-| Cadastro de dependentes em `/dependentes`, com acesso pelo Menu e questionário de Rendas | —                                                            |
-| Tela de Despesas com cadastro, efeito de cada despesa e barra do limite de educação      | —                                                            |
-| Rendas, dependentes e despesas persistidos no Supabase                                   | —                                                            |
+| Parâmetros fiscais de 2026                                                               |                                                              |
+| Estrutura do banco e políticas RLS definidas em [`supabase/`](supabase/)                 | Publicação da Edge Function de exclusão e deploy de produção |
+| Tela de Rendas por valores mensais, com contador de empresas, 13º e PLR                  |                                                              |
+| Home com o resultado, o status da estimativa e o detalhe do cálculo                      |                                                              |
+| Menu: dependentes, minha conta, sobre a estimativa, privacidade, sair e excluir conta    |                                                              |
+| Cadastro, login, perfil, consentimento e política de privacidade                         |                                                              |
+| Documentação do cálculo                                                                  |                                                              |
+| Layout base: saudação, barra inferior (Home, Rendas, Despesas, Menu)                     |                                                              |
+| Cadastro de dependentes em `/dependentes`, com acesso pelo Menu e questionário de Rendas |                                                              |
+| Tela de Despesas com cadastro, efeito de cada despesa e barra do limite de educação      |                                                              |
+| Rendas, dependentes e despesas persistidos no Supabase                                   |                                                              |
 
 O cadastro de dependentes guarda apenas apelido, relação, presença em outra declaração e renda
 própria em 2026. Dependentes em outra declaração, suas rendas e despesas ficam fora do cálculo.
@@ -261,6 +263,10 @@ registra pensão alimentícia como despesa anual, atualiza a RPC e remove o camp
 A RPC usa `SECURITY INVOKER`, respeita RLS e grava apenas as linhas alteradas, em uma transação.
 O app também garante a declaração na primeira gravação com `ON CONFLICT DO NOTHING`, atendendo
 contas anteriores ao trigger de cadastro.
+
+A empresa de cada fonte fica em `fontes_pagadoras.nome` (sem empresa, a categoria), o 13º, o IR do
+13º e a PLR em centavos do ano, como no informe (não divididos por 12), e o número de empresas que
+pagaram salário em `declaracoes.fontes_esperadas`, salvo quando o campo é confirmado.
 
 As rendas são gravadas em centavos **anuais**; o formulário mostra a média mensal. Valores anuais
 que não dividem por 12 são preservados exatamente enquanto o campo não muda. Despesas, inclusive

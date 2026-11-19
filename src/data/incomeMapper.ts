@@ -12,7 +12,14 @@ import { expenseForEngine, type DeclarationData } from './declarations'
 export interface IncomeState {
   registrations: IncomeRegistration[]
   household: Household
+  // `declaracoes.fontes_esperadas`: how many companies paid the holder a salary.
+  expectedStatements: number
 }
+// `fontes_pagadoras.nome` is required, but the employer is optional on screen: with no company the
+// category stands in, and loading it back leaves the employer empty.
+const sourceName = (entry: RegisteredIncomeEntry) => entry.employer?.trim() || entry.category
+// The informe's yearly 13º and PLR figures are typed and stored as they are (not ÷ 12).
+const yearlyField = (centavos: number) => (centavos > 0 ? formatMoneyInput(centavos) : '')
 const relations = {
   filho_enteado: 'filho_enteado',
   conjuge_companheiro: 'conjuge',
@@ -83,6 +90,10 @@ export function createIncomeMapper(nextId: () => number) {
         amount: formatMoneyInput(row.rendimentos_centavos / 12),
         inss: formatMoneyInput(row.previdencia_centavos / 12),
         irrf: formatMoneyInput(row.irrf_centavos / 12),
+        employer: row.nome === row.categoria ? '' : row.nome,
+        thirteenth: yearlyField(row.decimo_terceiro_centavos),
+        thirteenthIrrf: yearlyField(row.irrf_13_centavos),
+        profitSharing: yearlyField(row.plr_centavos),
         annualAmounts: {
           rendimentos_centavos: row.rendimentos_centavos,
           previdencia_centavos: row.previdencia_centavos,
@@ -92,6 +103,7 @@ export function createIncomeMapper(nextId: () => number) {
     }
     return {
       registrations,
+      expectedStatements: data.declaration?.fontes_esperadas ?? 1,
       household: {
         dependents,
         expenses: data.expenses.map((row) => {
@@ -121,7 +133,6 @@ export function createIncomeMapper(nextId: () => number) {
       id: '',
       user_id: userId,
       ano_calendario: 2026,
-      fontes_esperadas: 1,
       questionario_etapa: null,
       questionario_concluido: false,
       triagem: {},
@@ -132,6 +143,7 @@ export function createIncomeMapper(nextId: () => number) {
       criado_em: '',
       atualizado_em: '',
       ...before.declaration,
+      fontes_esperadas: state.expectedStatements,
     }
     return {
       declaration,
@@ -150,13 +162,13 @@ export function createIncomeMapper(nextId: () => number) {
           return {
             id,
             ...scope,
-            decimo_terceiro_centavos: 0,
-            irrf_13_centavos: 0,
-            plr_centavos: 0,
             ...old,
             cadastro_id: databaseId('registration', group.id),
-            nome: old?.nome ?? entry.category,
+            nome: sourceName(entry),
             categoria: entry.category,
+            decimo_terceiro_centavos: cents(entry.thirteenth ?? ''),
+            irrf_13_centavos: cents(entry.thirteenthIrrf ?? ''),
+            plr_centavos: cents(entry.profitSharing ?? ''),
             dependente_id:
               entry.dependentId == null ? null : databaseId('dependent', entry.dependentId),
             ...annualIncomeAmounts(entry),

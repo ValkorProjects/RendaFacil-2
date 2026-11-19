@@ -3,7 +3,7 @@ import PageCard from '@/components/PageCard.vue'
 </script>
 
 <template>
-  <PageCard eyebrow="Preferences" title="Settings">
-    <p>Sample settings page. Add your app's preferences and toggles here.</p>
+  <PageCard eyebrow="Preferências" title="Configurações">
+    <p>Ainda não há preferências para ajustar. Os dados da conta ficam em Menu › Minha conta.</p>
   </PageCard>
 </template>
