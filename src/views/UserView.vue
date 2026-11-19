@@ -6,8 +6,8 @@ import AppIcon from '@/components/AppIcon.vue'
 import PageCard from '@/components/PageCard.vue'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import { useAuthStore } from '@/stores/auth'
-import { dependentIncomeLabels, useIncomeStore } from '@/stores/income'
-import { cents, formatCurrency } from '@/utils/currency'
+import { useIncomeStore } from '@/stores/income'
+import { relationshipLabels } from '@/utils/dependents'
 import {
   authErrorMessage,
   readProfile,
@@ -738,26 +738,24 @@ async function signOut() {
             <h2 id="profile-dependents-title">
               Meus dependentes <span class="account-badge">{{ dependents.length }}</span>
             </h2>
-            <p>Dependentes informados na tela de rendimentos nesta sessão.</p>
+            <p>Dependentes cadastrados nesta sessão.</p>
           </div>
-          <RouterLink :to="{ name: 'income' }" class="text-button"
+          <RouterLink :to="{ name: 'dependents' }" class="text-button"
             >Gerenciar dependentes</RouterLink
           >
         </div>
         <ul v-if="dependents.length" class="dependent-list">
-          <li v-for="(dependent, index) in dependents" :key="dependent.id" class="dependent-item">
+          <li v-for="dependent in dependents" :key="dependent.id" class="dependent-item">
             <div>
-              <h3>Dependente {{ index + 1 }}</h3>
-              <p>{{ dependentIncomeLabels[dependent.incomeType] }}</p>
+              <h3>{{ dependent.apelido }}</h3>
+              <p>{{ relationshipLabels[dependent.relacao] }}</p>
             </div>
-            <strong v-if="dependent.incomeType !== 'none'"
-              >{{ formatCurrency(cents(dependent.amount)) }}<small>por mês</small></strong
-            >
+            <span v-if="dependent.em_outra_declaracao">Em outra declaração</span>
           </li>
         </ul>
         <p v-else class="empty-state">
-          Nenhum dependente cadastrado. Ao informar seus dependentes na aba de rendimentos, eles
-          aparecerão aqui.
+          Nenhum dependente cadastrado. Ao cadastrar seus dependentes pelo Menu, eles aparecerão
+          aqui.
         </p>
       </section>
 

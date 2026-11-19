@@ -27,7 +27,12 @@ const router = createRouter({
       component: () => import('@/views/IncomeView.vue'),
     },
     {
-      path: '/dedutiveis',
+      path: '/dependentes',
+      name: 'dependents',
+      component: () => import('@/views/DependentsView.vue'),
+    },
+    {
+      path: '/despesas',
       name: 'deductions',
       component: () => import('@/views/DeductionsView.vue'),
     },

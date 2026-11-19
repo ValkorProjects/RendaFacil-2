@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
 import { Money3Component } from 'v-money3'
+import { RouterLink } from 'vue-router'
+import ConfirmDelete from '@/components/ConfirmDelete.vue'
 import PageCard from '@/components/PageCard.vue'
 import { parametros } from '@/irpf'
 import { previaEfeito, reais, type EfeitoDespesa } from '@/irpf/efeitos'
@@ -41,17 +43,35 @@ const reembolsoInput = ref('')
 const editingId = ref<number | null>(null)
 const step = ref<1 | 2>(1)
 const formError = ref('')
+const confirmingId = ref<number | null>(null)
 
 const typesForCategory = computed(() =>
   EXPENSE_TYPES.filter(([, type]) => type.categoria === form.categoria),
 )
-// The declaration's dependents, with string ids as the engine and the expenses use them.
+// The declaration's dependents (registered on /dependentes), with string ids as the engine and
+// the expenses use them.
 const allDependents = computed(() =>
-  incomeStore.household.dependents.map((dependent) => ({ ...dependent, id: String(dependent.id) })),
+  incomeStore.dependents.map((dependent) => ({ ...dependent, id: String(dependent.id) })),
 )
 const declaredDependents = computed(() =>
-  allDependents.value.filter((dependent) => !dependent.emOutraDeclaracao),
+  allDependents.value.filter((dependent) => !dependent.em_outra_declaracao),
 )
+const selectedType = computed(() => TIPOS_DESPESA[form.tipo as IdTipoDespesa])
+// Says up front whether the chosen type deducts, before anything is typed.
+const typeHint = computed(() => {
+  if (!selectedType.value.dedutivel) {
+    return 'Não deduz. Você pode registrar a despesa, mas ela não entra na conta.'
+  }
+  if (form.categoria === 'saude') {
+    return 'Deduz sem limite, descontado o reembolso do plano de saúde.'
+  }
+  if (form.categoria === 'educacao') {
+    return `Deduz até ${formatCurrency(EDUCATION_LIMIT)} por pessoa no ano.`
+  }
+  return 'Deduz sem limite, se fixada por decisão judicial, acordo homologado na Justiça ou escritura pública.'
+})
+// Only a deductible health expense is reduced by a reimbursement.
+const asksRefund = computed(() => form.categoria === 'saude' && selectedType.value.dedutivel)
 const expensesByCategory = computed(() =>
   CATEGORIES.map((category) => ({
     category,
@@ -76,7 +96,7 @@ const preview = computed<{ effect: EfeitoDespesa | null; error: string }>(() => 
           beneficiario: form.beneficiario,
           dependente_id: form.dependente_id,
           valor_centavos: amount,
-          reembolso_centavos: cents(reembolsoInput.value),
+          reembolso_centavos: asksRefund.value ? cents(reembolsoInput.value) : 0,
           base_legal_ok: form.categoria === 'pensao' ? form.base_legal_ok : null,
         },
       ),
@@ -88,16 +108,13 @@ const preview = computed<{ effect: EfeitoDespesa | null; error: string }>(() => 
 })
 const educationLabel = (personId: string) => {
   if (personId === 'titular') return 'Titular'
-  return (
-    declaredDependents.value.find((dependent) => dependent.id === personId)?.name?.trim() ||
-    'Dependente'
-  )
+  return allDependents.value.find((dependent) => dependent.id === personId)?.apelido || 'Dependente'
 }
 const pensionReceiverWarning = computed(() => {
   const receiver = form.recebedor.trim().toLocaleLowerCase('pt-BR')
   if (!receiver || form.pensaoIniciouEm2026) return ''
   const dependent = allDependents.value.find(
-    (item) => item.name?.trim().toLocaleLowerCase('pt-BR') === receiver,
+    (item) => item.apelido.toLocaleLowerCase('pt-BR') === receiver,
   )
   return dependent
     ? 'O recebedor está cadastrado como dependente. Confira com atenção a situação no ano em que a pensão começou.'
@@ -153,7 +170,7 @@ const validate = () => {
   }
   if (cents(valorInput.value) <= 0) return 'Informe um valor maior que zero.'
   if (
-    form.categoria === 'saude' &&
+    asksRefund.value &&
     (cents(reembolsoInput.value) < 0 || cents(reembolsoInput.value) > cents(valorInput.value))
   ) {
     return 'O reembolso deve ficar entre zero e o valor da despesa.'
@@ -175,16 +192,19 @@ const saveExpense = () => {
   const expense: Omit<RegisteredExpense, 'id'> = {
     ...form,
     valor_centavos: cents(valorInput.value),
-    reembolso_centavos: form.categoria === 'saude' ? cents(reembolsoInput.value) : 0,
+    reembolso_centavos: asksRefund.value ? cents(reembolsoInput.value) : 0,
     base_legal_ok: form.categoria === 'pensao' ? form.base_legal_ok : null,
     recebedor: form.categoria === 'pensao' ? form.recebedor.trim() : '',
     pensaoIniciouEm2026: form.categoria === 'pensao' && form.pensaoIniciouEm2026,
     descricao: form.descricao.trim(),
   }
-  if (editingId.value === null) {
-    incomeStore.addExpense(expense)
-  } else {
-    incomeStore.updateExpense({ ...expense, id: editingId.value })
+  const saved =
+    editingId.value === null
+      ? incomeStore.addExpense(expense)
+      : incomeStore.updateExpense({ ...expense, id: editingId.value })
+  if (!saved) {
+    formError.value = 'Não foi possível salvar. Confira os dados da despesa.'
+    return
   }
   resetForm()
 }
@@ -199,9 +219,13 @@ const editExpense = (expense: RegisteredExpense) => {
   window.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
-const confirmRemove = (expense: RegisteredExpense) => {
-  if (window.confirm('Remover esta despesa?')) incomeStore.removeExpense(expense.id)
+const remove = (expense: RegisteredExpense) => {
+  incomeStore.removeExpense(expense.id)
+  confirmingId.value = null
+  if (editingId.value === expense.id) resetForm()
 }
+const expenseLabel = (expense: RegisteredExpense) =>
+  expense.descricao || (TIPOS_DESPESA[expense.tipo as IdTipoDespesa]?.rotulo ?? expense.tipo)
 
 const dateLabel = (date: string) => {
   const [year, month, day] = date.split('-')
@@ -224,7 +248,7 @@ const pensionWarning = (expense: RegisteredExpense) => {
   const receiver = expense.recebedor.trim().toLocaleLowerCase('pt-BR')
   if (!receiver || expense.pensaoIniciouEm2026) return ''
   const match = allDependents.value.find(
-    (dependent) => dependent.name?.trim().toLocaleLowerCase('pt-BR') === receiver,
+    (dependent) => dependent.apelido.toLocaleLowerCase('pt-BR') === receiver,
   )
   return match
     ? 'O recebedor também está cadastrado como dependente; confira o ano em que a pensão começou.'
@@ -234,11 +258,12 @@ const pensionWarning = (expense: RegisteredExpense) => {
 
 <template>
   <div class="deductibles-page">
-    <PageCard eyebrow="Declaração anual · 2026" title="Despesas dedutíveis">
+    <PageCard eyebrow="Declaração de 2026" title="Despesas">
       <p class="intro">
         Cadastre despesas de saúde, educação e pensão alimentícia para atualizar a estimativa do
-        imposto. Guarde os comprovantes; os dados são usados na estimativa e limpos ao sair da
-        conta.
+        imposto. A lista de tipos já diz quais deduzem: as que não deduzem podem ser registradas,
+        mas não entram na conta. Guarde os comprovantes; os dados são usados na estimativa e limpos
+        ao sair da conta.
       </p>
 
       <section class="form-section glass" aria-labelledby="expense-form-title">
@@ -263,11 +288,23 @@ const pensionWarning = (expense: RegisteredExpense) => {
           </select>
 
           <label class="field-label" for="expense-type">Tipo</label>
-          <select id="expense-type" v-model="form.tipo" class="field-control">
+          <select
+            id="expense-type"
+            v-model="form.tipo"
+            class="field-control"
+            aria-describedby="expense-type-hint"
+          >
             <option v-for="[id, type] in typesForCategory" :key="id" :value="id">
               {{ type.rotulo }}{{ type.dedutivel ? '' : ' (não dedutível)' }}
             </option>
           </select>
+          <p
+            id="expense-type-hint"
+            class="field-help"
+            :class="{ 'no-deduction': !selectedType.dedutivel }"
+          >
+            {{ typeHint }}
+          </p>
           <button class="primary-button" type="button" @click="step = 2">Continuar</button>
         </template>
 
@@ -292,13 +329,16 @@ const pensionWarning = (expense: RegisteredExpense) => {
                   :key="dependent.id"
                   :value="dependent.id"
                 >
-                  {{ dependent.name?.trim() || `Dependente ${dependent.id}` }}
+                  {{ dependent.apelido }}
                 </option>
               </select>
               <p v-if="!declaredDependents.length" class="field-error" role="alert">
                 Cadastre um dependente nesta declaração primeiro.
               </p>
             </template>
+            <RouterLink class="text-link" :to="{ name: 'dependents' }"
+              >Cadastrar ou gerenciar dependentes</RouterLink
+            >
             <p v-if="form.categoria === 'educacao'" class="field-help">
               O limite anual de dedução é {{ formatCurrency(EDUCATION_LIMIT) }} por pessoa.
             </p>
@@ -334,7 +374,7 @@ const pensionWarning = (expense: RegisteredExpense) => {
             autocomplete="off"
             v-bind="moneyConfig"
           />
-          <template v-if="form.categoria === 'saude'">
+          <template v-if="asksRefund">
             <label class="field-label" for="expense-reimbursement">Valor reembolsado</label>
             <Money3Component
               id="expense-reimbursement"
@@ -478,9 +518,12 @@ const pensionWarning = (expense: RegisteredExpense) => {
               <button class="secondary-button" type="button" @click="editExpense(expense)">
                 Editar
               </button>
-              <button class="remove-button" type="button" @click="confirmRemove(expense)">
-                Remover
-              </button>
+              <ConfirmDelete
+                :open="confirmingId === expense.id"
+                :item-label="expenseLabel(expense)"
+                @update:open="confirmingId = $event ? expense.id : null"
+                @confirm="remove(expense)"
+              />
             </div>
           </article>
         </section>
@@ -637,8 +680,7 @@ button:focus-visible {
 }
 
 .primary-button,
-.secondary-button,
-.remove-button {
+.secondary-button {
   min-height: 2.5rem;
   padding: 0.5rem 0.85rem;
   border: 1px solid var(--glass-border);
@@ -749,5 +791,17 @@ button:focus-visible {
   .education-section {
     padding: 1.5rem;
   }
+}
+
+.no-deduction {
+  padding-left: 0.75rem;
+  border-left: 3px solid var(--color-accent);
+}
+
+.text-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.75rem;
+  color: var(--color-accent);
 }
 </style>

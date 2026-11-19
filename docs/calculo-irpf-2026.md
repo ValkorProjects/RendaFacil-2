@@ -282,25 +282,24 @@ const resultado = calcularAjusteAnual({
 
 ### 8.1 Estimativa parcial nas telas
 
-As telas de Rendas e Dedutíveis usam o motor, com os dados guardados só em memória:
+As telas de Rendas, Dependentes e Despesas usam o motor, com os dados guardados só em memória:
 
-| Cadastro na tela                                  | No motor                                                |
-| ------------------------------------------------- | ------------------------------------------------------- |
-| Valor mensal de cada rendimento                   | `fontes[].rendimentos` (anualizado × 12)                |
-| INSS descontado no mês                            | `fontes[].previdencia` (anualizado × 12)                |
-| IR retido na fonte no mês                         | `fontes[].irrf` (anualizado × 12)                       |
-| Renda tributável de dependente (estágio, outros)  | uma fonte a mais, sem INSS nem IRRF                     |
-| Pensão recebida por dependente                    | fica fora (isenta)                                      |
-| Cada dependente não marcado em outra declaração   | `dependentes`                                           |
-| Pensão alimentícia anual cadastrada em Dedutíveis | `pensoes`                                               |
-| Despesas cadastradas de saúde e educação          | `saude` e `educacao`, com validação e limite por pessoa |
-| Pensão anual cadastrada em Dedutíveis             | `pensoes`; não é projetada na simulação mensal da folha |
+| Cadastro na tela                                        | No motor                                                   |
+| ------------------------------------------------------- | ---------------------------------------------------------- |
+| Valor mensal de cada rendimento                         | `fontes[].rendimentos` (anualizado × 12)                   |
+| INSS descontado no mês                                  | `fontes[].previdencia` (anualizado × 12)                   |
+| IR retido na fonte no mês                               | `fontes[].irrf` (anualizado × 12)                          |
+| Rendimento de um dependente ("De quem é o rendimento?") | uma fonte com `dependente_id`; fora se ele não for válido  |
+| Pensão alimentícia recebida                             | fica fora (isenta)                                         |
+| Cada dependente não marcado em outra declaração         | `dependentes`                                              |
+| Despesas de saúde e educação cadastradas em Despesas    | `saude` e `educacao`, com validação e limite por pessoa    |
+| Pensão alimentícia paga, cadastrada em Despesas         | `pensoes`, só com a base legal; fora da simulação da folha |
 
 Para uma fonte CLT, a tela compara o INSS e o IR retido digitados com a folha mensal (`incomeEntryWarnings`) e avisa, sem bloquear, quando diferem mais de R$ 0,10 (INSS acima da tabela, IR retido diferente da tabela). Férias, 13º, um segundo empregador e deduções extras explicam diferenças legítimas, e o informe de rendimentos é o que vale. A visão **Mensal** do cartão mostra a conta da folha ao lado dos valores informados. Ela supõe o mesmo salário o ano todo; escolher um mês específico está como TODO em `TaxEstimateCard.vue`.
 
 Duas outras proteções, também sem bloquear: `inssCeilingWarning` avisa quando o INSS somado de todas as fontes passa do teto anual (12 × 988,09 = 11.857,08, critério do RF-12), o que acontece com mais de um empregador; e o cartão lista as categorias que não são CLT ("Tratado como salário: …"), porque aluguéis, autônomo/PJ e aposentadoria passam pelo motor como se fossem salário. Quem tem uma renda de PJ sem retenção, por exemplo, paga o carnê-leão mês a mês, e esse imposto ainda não é descontado da estimativa (seção 9).
 
-A conversão fica em `buildTaxInput` e `buildDeclarationData`, em [`src/stores/income.ts`](../src/stores/income.ts). O botão "Calcular INSS e IR pelo salário" usa `calcularFolhaMensal` com os dependentes válidos, sem presumir pensão mensal. Os dependentes valem para a declaração inteira: são informados uma vez só e contam uma vez só, mesmo com várias fontes de renda. A pensão anual é cadastrada uma única vez em Dedutíveis, com a confirmação da base legal, e só entra no ajuste da declaração; não é projetada na simulação mensal da folha, pois o total anual não informa como os pagamentos se distribuem pelos meses ou pelas fontes pagadoras. Todas as categorias de renda são tratadas como rendimento tributável; aluguéis, trabalho autônomo e aposentadoria têm regras próprias que ficam fora do MVP (seção 9), e o cartão da estimativa avisa isso.
+A conversão fica em `buildTaxInput` e `buildDeclarationData`, em [`src/stores/income.ts`](../src/stores/income.ts). O botão "Calcular INSS e IR pelo salário" usa `calcularFolhaMensal` com os dependentes válidos, sem presumir pensão mensal. Os dependentes valem para a declaração inteira: são informados uma vez só e contam uma vez só, mesmo com várias fontes de renda. A pensão anual é cadastrada uma única vez em Despesas, com a confirmação da base legal, e só entra no ajuste da declaração; não é projetada na simulação mensal da folha, pois o total anual não informa como os pagamentos se distribuem pelos meses ou pelas fontes pagadoras. Todas as categorias de renda são tratadas como rendimento tributável; aluguéis, trabalho autônomo e aposentadoria têm regras próprias que ficam fora do MVP (seção 9), e o cartão da estimativa avisa isso.
 
 ## 9. Fora do escopo do MVP
 

@@ -192,13 +192,23 @@ test('password changes reject invalid inputs and incorrect current passwords bef
 
 test('dependents without income survive saving and account data is cleared on sign-out', async () => {
   income.draftIncomes[0].amount = '100000'
-  income.setHasDependents(true)
-  income.setDependentCount(2)
-  income.dependents[1].incomeType = 'estagio'
-  income.dependents[1].amount = '50000'
+  income.saveDependent({
+    apelido: 'Lia',
+    relacao: 'filho_enteado',
+    em_outra_declaracao: false,
+    teve_renda_propria: false,
+  })
+  income.saveDependent({
+    apelido: 'Teo',
+    relacao: 'filho_enteado',
+    em_outra_declaracao: false,
+    teve_renda_propria: true,
+  })
+  income.addDraftIncome()
+  Object.assign(income.draftIncomes[1], { amount: '50000', dependentId: income.dependents[1].id })
   assert.equal(income.saveDraft(), true)
   assert.equal(income.dependentCount, 2)
-  assert.equal(income.dependents[0].incomeType, 'none')
+  assert.equal(income.dependents[0].teve_renda_propria, false)
   assert.equal(income.taxableTotal, 1800000)
   income.draftIncomes[0].amount = '20000'
   income.addExpense({
