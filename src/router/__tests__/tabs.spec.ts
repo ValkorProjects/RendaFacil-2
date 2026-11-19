@@ -12,7 +12,7 @@ describe('barra inferior (RF-09)', () => {
   })
 
   it('marca o Menu nas telas abertas por ele', () => {
-    for (const route of ['user', 'privacy', 'settings', 'info']) {
+    for (const route of ['user', 'privacy', 'settings', 'info', 'dependents']) {
       expect(tabForRoute(route)).toBe('menu')
     }
   })

@@ -7,6 +7,12 @@ import PageCard from '@/components/PageCard.vue'
 // (dependentes, sobre a estimativa, sair, excluir conta).
 const items: { route: string; label: string; description: string; icon: IconName }[] = [
   {
+    route: 'dependents',
+    label: 'Dependentes',
+    description: 'Cadastros, rendimentos e vínculos com despesas',
+    icon: 'user',
+  },
+  {
     route: 'user',
     label: 'Minha conta',
     description: 'Dados pessoais, senha e exclusão da conta',

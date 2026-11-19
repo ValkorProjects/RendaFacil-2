@@ -37,6 +37,10 @@ const otherModel = computed(() =>
 <template>
   <section class="tax-estimate glass" aria-labelledby="tax-estimate-title" aria-live="polite">
     <p class="kicker">Estimativa do imposto</p>
+    <p v-if="estimate?.ok && estimate.provisional" class="line" role="status">
+      <strong>Estimativa provisória.</strong> Falta lançar o informe de dependente com renda própria
+      em Rendas, no campo “De quem é o rendimento?”.
+    </p>
 
     <div v-if="payroll.length" class="view-switch" role="group" aria-label="Visão da estimativa">
       <button type="button" :aria-pressed="view === 'anual'" @click="view = 'anual'">Anual</button>
@@ -289,10 +293,8 @@ const otherModel = computed(() =>
       pode estar acima ou abaixo do real.
     </p>
     <p class="note">
-      Estimativa parcial: despesas de saúde e educação ainda não entram na conta, porque a tela de
-      dedutíveis ainda não existe. Todas as rendas informadas são tratadas como rendimentos
-      tributáveis; aluguéis, trabalho autônomo e aposentadoria têm regras próprias que ainda não são
-      calculadas.
+      A estimativa usa os rendimentos e as despesas lançados. Pensão alimentícia recebida é isenta;
+      aluguéis, trabalho autônomo e aposentadoria têm regras próprias que ainda não são calculadas.
     </p>
     <p class="note">
       Estimativa. Não substitui a declaração oficial nem a orientação de um contador.

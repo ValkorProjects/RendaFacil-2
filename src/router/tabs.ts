@@ -21,6 +21,7 @@ export const TABS: readonly Tab[] = [
 
 // Screens that are not a tab themselves, by route name.
 const SCREEN_TABS: Record<string, TabId> = {
+  dependents: 'menu',
   user: 'menu',
   privacy: 'menu',
   settings: 'menu',
