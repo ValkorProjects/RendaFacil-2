@@ -29,6 +29,9 @@ const comoModelo = ([deducoes, base, impostoTabela, reducao, impostoDevido]: Lin
   impostoDevido,
 })
 
+const emReais = (centavos: number) =>
+  (centavos / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
 // 12 meses de 6.500,00 com 2 dependentes e pensão de 800,00 por mês (exemplo do esboço)
 const F1 = entrada({
   fontes: [fonte(7_800_000, 853_812, 298_104)],
@@ -214,7 +217,21 @@ describe('calcularAjusteAnual · casos de referência do RF-08', () => {
   })
 
   it('devolve os intermediários para explicar a conta (F1)', () => {
-    expect(calcularAjusteAnual(F1)).toMatchObject({
+    const r = calcularAjusteAnual(F1)
+
+    console.log(
+      `
+[F1 · AJUSTE ANUAL | valores em R$]
+  Deduções:      ${emReais(r.totalPrevidencia)} + ${emReais(r.deducaoDependentes)} + ${emReais(r.totalPensoes)} = ${emReais(r.completo.deducoes)}
+  Completo:      ${emReais(r.rendimentos)} − ${emReais(r.completo.deducoes)} → base ${emReais(r.completo.base)}
+                 ${emReais(r.completo.impostoTabela)} − ${emReais(r.completo.reducao)} → devido ${emReais(r.completo.impostoDevido)}
+  Simplificado:  ${emReais(r.rendimentos)} − ${emReais(r.simplificado.deducoes)} → base ${emReais(r.simplificado.base)}
+                 ${emReais(r.simplificado.impostoTabela)} − ${emReais(r.simplificado.reducao)} → devido ${emReais(r.simplificado.impostoDevido)}
+  Resultado:     ${emReais(r.irrfRetido)} − ${emReais(r.impostoDevido)} → ${emReais(r.resultado)} (${r.resultado < 0 ? 'a pagar' : 'restituição'})
+`.trim(),
+    )
+
+    expect(r).toMatchObject({
       rendimentos: 7_800_000,
       irrfRetido: 298_104,
       totalPrevidencia: 853_812,

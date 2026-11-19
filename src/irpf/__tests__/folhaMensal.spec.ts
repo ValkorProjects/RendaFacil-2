@@ -12,6 +12,11 @@ import {
 // centavos.
 
 const faixasInss = PARAMETROS_2026.mensal.inss
+const emReais = (centavos: number) =>
+  (centavos / 100).toLocaleString('pt-BR', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })
 
 describe('calcularInss', () => {
   it.each([
@@ -140,6 +145,15 @@ describe('folha mensal × ajuste anual (caso F1 da documentação)', () => {
   })
 
   it('o ajuste cobra 383,37, mesmo com uma empresa só e salário igual o ano todo', () => {
+    console.log(
+      `
+[F1 · FOLHA × AJUSTE | valores em R$]
+  Mensal: ${emReais(folha.bruto)} − ${emReais(folha.deducoes)} → base ${emReais(folha.base)}
+          ${emReais(folha.impostoTabela)} − ${emReais(folha.reducao)} → IRRF ${emReais(folha.irrf)}
+  Anual:  ${emReais(ajuste.irrfRetido)} − ${emReais(ajuste.impostoDevido)} → ${emReais(ajuste.resultado)} (a pagar)
+`.trim(),
+    )
+
     expect(ajuste.modelo).toBe('completo')
     expect(ajuste.resultado).toBe(-38_337)
   })
