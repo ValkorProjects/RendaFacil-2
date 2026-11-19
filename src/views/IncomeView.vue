@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { RouterLink, useRouter } from 'vue-router'
 import { Money3Component } from 'v-money3'
 import ConfirmDelete from '@/components/ConfirmDelete.vue'
 import PageCard from '@/components/PageCard.vue'
@@ -8,11 +8,9 @@ import TaxEstimateCard from '@/components/TaxEstimateCard.vue'
 import { parametros } from '@/irpf'
 import { cents, formatCurrency, moneyConfig } from '@/utils/currency'
 import {
-  dependentIncomeLabels,
   incomeCategoryLabels,
   incomeEntryError,
   incomeEntryWarnings,
-  type DependentIncome,
   type IncomeCategory,
   type RegisteredIncomeEntry,
   useIncomeStore,
@@ -24,13 +22,6 @@ const incomeCategories = (Object.entries(incomeCategoryLabels) as [IncomeCategor
     label,
   }),
 )
-
-const dependentIncomeTypes = (
-  Object.entries(dependentIncomeLabels) as [DependentIncome, string][]
-).map(([value, label]) => ({
-  value,
-  label,
-}))
 
 const router = useRouter()
 const incomeStore = useIncomeStore()
@@ -45,21 +36,13 @@ const incomeWarnings = (income: RegisteredIncomeEntry | undefined) =>
   income
     ? incomeEntryWarnings(
         income,
-        incomeStore.household.dependents.length,
-        incomeStore.household.alimonyPaid,
+        income.dependentId == null ? incomeStore.dependentCount : 0,
+        income.dependentId == null ? incomeStore.household.alimonyPaid : '',
       )
     : []
 
 const fillFromSalary = (id: number) => {
   salaryErrors.value[id] = incomeStore.fillDraftIncomeFromSalary(id)
-}
-
-const updateDependentCount = (event: Event) => {
-  incomeStore.setDependentCount(Number((event.target as HTMLInputElement).value))
-}
-
-const updateHasDependents = (event: Event) => {
-  incomeStore.setHasDependents((event.target as HTMLInputElement).checked)
 }
 
 const setConfirmingDelete = (registrationId: number, open: boolean) => {
@@ -94,6 +77,12 @@ const updateEditingIncome = (
 ) => {
   const income = editingIncomes.value[index]
   if (income) income[field] = String(value)
+}
+
+const setEditingOwner = (index: number, event: Event) => {
+  const income = editingIncomes.value[index]
+  const value = (event.target as HTMLSelectElement).value
+  if (income) income.dependentId = value === '' ? null : Number(value)
 }
 
 const saveInlineEdit = () => {
@@ -183,8 +172,14 @@ const saveIncomeAndReturn = () => {
                 :key="income.id"
                 class="saved-income"
               >
+                <span v-if="income.dependentId != null" class="dependent-income-badge">
+                  Dependente: {{ incomeStore.incomeOwner(income) }}
+                </span>
                 <div class="saved-entry">
-                  <span>{{ incomeCategoryLabels[income.category] }}</span>
+                  <span>
+                    {{ incomeCategoryLabels[income.category] }}
+                    <template v-if="income.dependentId == null"> · Titular</template>
+                  </span>
                   <Money3Component
                     v-if="editingRegistrationId === registration.id"
                     :model-value="editingIncomes[index]?.amount ?? ''"
@@ -195,6 +190,27 @@ const saveIncomeAndReturn = () => {
                     @update:model-value="updateEditingIncome(index, 'amount', $event)"
                   />
                   <strong v-else>{{ formatCurrency(cents(income.amount)) }}</strong>
+                </div>
+                <div
+                  v-if="editingRegistrationId === registration.id && editingIncomes[index]"
+                  class="saved-entry"
+                >
+                  <label :for="`edit-owner-${income.id}`">De quem é o rendimento?</label>
+                  <select
+                    :id="`edit-owner-${income.id}`"
+                    :value="editingIncomes[index]?.dependentId ?? ''"
+                    class="field-control"
+                    @change="setEditingOwner(index, $event)"
+                  >
+                    <option value="">Titular</option>
+                    <option
+                      v-for="dependent in incomeStore.dependents"
+                      :key="dependent.id"
+                      :value="dependent.id"
+                    >
+                      {{ dependent.apelido }}
+                    </option>
+                  </select>
                 </div>
                 <div class="saved-entry saved-entry-detail">
                   <span>INSS por mês</span>
@@ -253,7 +269,7 @@ const saveIncomeAndReturn = () => {
         <div class="section-heading">
           <div>
             <p class="section-kicker">01</p>
-            <h2 id="income-title">Rendimentos do titular</h2>
+            <h2 id="income-title">Rendimentos do titular e dos dependentes</h2>
           </div>
           <span class="section-status">Obrigatório</span>
         </div>
@@ -276,6 +292,26 @@ const saveIncomeAndReturn = () => {
                 Remover
               </button>
             </div>
+            <label class="field-label" :for="`income-owner-${income.id}`"
+              >De quem é o rendimento?</label
+            >
+            <select
+              :id="`income-owner-${income.id}`"
+              v-model="income.dependentId"
+              class="field-control"
+            >
+              <option :value="null">Titular</option>
+              <option
+                v-for="dependent in incomeStore.dependents"
+                :key="dependent.id"
+                :value="dependent.id"
+              >
+                {{ dependent.apelido
+                }}{{
+                  dependent.em_outra_declaracao ? ' (em outra declaração — não entra na conta)' : ''
+                }}
+              </option>
+            </select>
             <label class="field-label" :for="`income-type-${income.id}`">Categoria</label>
             <select
               :id="`income-type-${income.id}`"
@@ -374,97 +410,23 @@ const saveIncomeAndReturn = () => {
       </section>
 
       <section class="form-section glass" aria-labelledby="dependents-title">
-        <div class="section-heading">
-          <div>
-            <p class="section-kicker">02</p>
-            <h2 id="dependents-title">Dependentes</h2>
-          </div>
-          <span class="section-status optional">Opcional</span>
-        </div>
-
-        <div class="toggle-row">
-          <div>
-            <strong>Possui dependentes?</strong>
-            <p>
-              Valem para a declaração inteira: informe cada dependente uma vez só, mesmo com mais de
-              uma fonte de renda. As mudanças contam na hora, sem precisar de "Adicionar".
-            </p>
-            <p>Adicione as informações de renda de cada dependente.</p>
-            <p>
-              No modelo completo, cada dependente deduz {{ formatCurrency(dependentDeduction) }} por
-              ano.
-            </p>
-          </div>
-          <label class="switch">
-            <input
-              :checked="incomeStore.hasDependents"
-              type="checkbox"
-              @change="updateHasDependents"
-            />
-            <span aria-hidden="true" />
-            <span class="sr-only">Possui dependentes?</span>
-          </label>
-        </div>
-
-        <div v-if="incomeStore.hasDependents" class="dependents-content">
-          <label class="field-label" for="dependent-count">Quantos dependentes?</label>
-          <input
-            id="dependent-count"
-            :value="incomeStore.dependents.length"
-            class="field-control count-control"
-            type="number"
-            min="0"
-            max="20"
-            inputmode="numeric"
-            @input="updateDependentCount"
-          />
-
-          <div v-if="incomeStore.dependents.length" class="dependent-list">
-            <article
-              v-for="(dependent, index) in incomeStore.dependents"
-              :key="dependent.id"
-              class="dependent-card"
-            >
-              <div class="dependent-number">{{ String(index + 1).padStart(2, '0') }}</div>
-              <div class="dependent-fields">
-                <label class="field-label" :for="`dependent-type-${dependent.id}`">
-                  Dependente {{ index + 1 }} · Tipo de renda
-                </label>
-                <select
-                  :id="`dependent-type-${dependent.id}`"
-                  v-model="dependent.incomeType"
-                  class="field-control"
-                >
-                  <option
-                    v-for="incomeType in dependentIncomeTypes"
-                    :key="incomeType.value"
-                    :value="incomeType.value"
-                  >
-                    {{ incomeType.label }}
-                  </option>
-                </select>
-                <template v-if="dependent.incomeType !== 'none'">
-                  <label class="field-label" :for="`dependent-amount-${dependent.id}`"
-                    >Valor mensal</label
-                  >
-                  <Money3Component
-                    :id="`dependent-amount-${dependent.id}`"
-                    class="field-control currency-input"
-                    inputmode="numeric"
-                    autocomplete="off"
-                    v-model="dependent.amount"
-                    v-bind="moneyConfig"
-                    aria-label="Valor mensal do dependente em reais"
-                  />
-                  <p v-if="dependent.incomeType === 'pensao'" class="exempt-note">
-                    Este rendimento é isento.
-                  </p>
-                </template>
-              </div>
-            </article>
-          </div>
-          <p v-else class="empty-state">Informe a quantidade para adicionar os dependentes.</p>
-        </div>
+        <h2 id="dependents-title">Possui dependentes?</h2>
+        <p>
+          Cadastre cada pessoa pelo apelido. Cada dependente válido deduz
+          {{ formatCurrency(dependentDeduction) }} por ano no modelo completo.
+        </p>
+        <p>
+          {{ incomeStore.dependents.length }} cadastrado(s),
+          {{ incomeStore.dependentCount }} válido(s) para esta declaração.
+        </p>
+        <RouterLink class="button" :to="{ name: 'dependents' }"
+          >Cadastrar ou gerenciar dependentes</RouterLink
+        >
+        <p v-if="incomeStore.pendingDependents.length" class="field-warning" role="status">
+          Estimativa provisória: falta lançar o informe de
+          {{ incomeStore.pendingDependents.map((dependent) => dependent.apelido).join(', ') }}.
+          Selecione o apelido em “De quem é o rendimento?” e salve o lançamento.
+        </p>
       </section>
 
       <section class="form-section glass" aria-labelledby="alimony-title">
@@ -477,7 +439,8 @@ const saveIncomeAndReturn = () => {
         </div>
         <p class="field-help">
           Só deduz a pensão fixada por decisão judicial, acordo homologado na Justiça ou escritura
-          pública. A pensão que um dependente recebe fica no campo dele, acima.
+          pública. A pensão recebida deve ser lançada em Rendas, na categoria isenta e com o
+          beneficiário correto.
         </p>
         <p class="field-help">
           Informe o total pago por mês uma vez só: vale para a declaração inteira, não para cada
@@ -979,6 +942,20 @@ select.field-control option {
 .saved-income {
   display: grid;
   gap: 0.2rem;
+}
+
+.dependent-income-badge {
+  justify-self: start;
+  max-width: 100%;
+  margin-bottom: 0.35rem;
+  padding: 0.3rem 0.65rem;
+  border: 1px solid color-mix(in srgb, var(--color-accent), transparent 70%);
+  border-radius: 0.6rem;
+  background: color-mix(in srgb, var(--color-accent), transparent 92%);
+  color: var(--color-accent);
+  font-size: 0.75rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
 }
 
 .saved-entry-detail {

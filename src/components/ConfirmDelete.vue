@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { nextTick, ref, useId, watch } from 'vue'
 
-// Delete with a confirmation inside the screen, not a dialog (RF-09): used by Rendas, Dedutíveis and
+// Delete with a confirmation inside the screen, not a dialog (RF-09): used by Rendas, Despesas and
 // Dependentes. The default slot explains what else goes away (e.g. the expenses of a dependent).
 // `v-model:open` lets the screen know, e.g. to give the confirmation a full row.
 const props = withDefaults(

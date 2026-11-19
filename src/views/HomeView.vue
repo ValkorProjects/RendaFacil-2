@@ -94,6 +94,9 @@ const features = [
         <span v-else class="income-summary-close" aria-hidden="true">×</span>
       </button>
       <div v-if="isIncomeSummaryOpen" class="income-summary-menu">
+        <p v-if="incomeStore.pendingDependents.length" role="status">
+          Estimativa provisória: falta informe de dependente em Rendas.
+        </p>
         <div class="income-detail-list">
           <article
             v-for="item in incomeStore.items"

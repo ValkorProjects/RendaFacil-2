@@ -1,3 +1,4 @@
+import { emptyDependent } from '@/utils/dependents'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it } from 'vitest'
 
@@ -33,8 +34,8 @@ const fillDraft = (
 }
 
 const withDependents = (store: Store, count: number) => {
-  store.setHasDependents(true)
-  store.setDependentCount(count)
+  for (let index = 0; index < count; index++)
+    store.saveDependent({ ...emptyDependent(), apelido: 'Pessoa ' + index })
 }
 
 const registration = (fields: Partial<IncomeRegistration>): IncomeRegistration => ({
@@ -46,7 +47,11 @@ const registration = (fields: Partial<IncomeRegistration>): IncomeRegistration =
 const household = (fields: Partial<Household>): Household => ({ ...emptyHousehold(), ...fields })
 
 const noIncomeDependents = (count: number): RegisteredDependent[] =>
-  Array.from({ length: count }, (_, index) => ({ id: index + 1, incomeType: 'none', amount: '' }))
+  Array.from({ length: count }, (_, index) => ({
+    ...emptyDependent(),
+    id: index + 1,
+    apelido: 'Pessoa ' + index,
+  }))
 
 beforeEach(() => {
   setActivePinia(createPinia())
@@ -212,18 +217,32 @@ describe('buildTaxInput', () => {
     })
   })
 
-  it('counts every dependent and adds only their taxable income', () => {
+  it('counts valid dependents and adds only their taxable income from Rendas', () => {
     const input = buildTaxInput(
-      [],
-      household({
-        dependents: [
-          { id: 1, incomeType: 'none', amount: '' },
-          { id: 2, incomeType: 'estagio', amount: 'R$ 1.200,00' },
-          { id: 3, incomeType: 'pensao', amount: 'R$ 900,00' }, // received alimony is exempt
-        ],
-      }),
+      [
+        registration({
+          incomes: [
+            {
+              id: 1,
+              category: 'autonomo',
+              amount: 'R$ 1.200,00',
+              inss: '',
+              irrf: '',
+              dependentId: 2,
+            },
+            {
+              id: 2,
+              category: 'pensaoAlimenticia',
+              amount: 'R$ 900,00',
+              inss: '',
+              irrf: '',
+              dependentId: 3,
+            },
+          ],
+        }),
+      ],
+      household({ dependents: noIncomeDependents(3) }),
     )
-
     expect(input.dependentes).toBe(3)
     expect(input.fontes).toEqual([{ rendimentos: 1_440_000, previdencia: 0, irrf: 0 }])
   })

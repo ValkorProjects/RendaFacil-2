@@ -39,7 +39,7 @@ Quando o MVP estiver completo, o fluxo terá quatro etapas. Elas descrevem o pro
 
 1. **Questionário inicial:** coleta o básico (quantas empresas pagaram salário, dependentes, pensão, gastos com saúde e educação) e identifica situações que o app ainda não calcula, como aluguel recebido ou renda de autônomo.
 2. **Rendas:** a pessoa lança o informe de rendimentos de cada empresa ou, antes de ele chegar, estima pelo salário mensal.
-3. **Dependentes e dedutíveis:** cadastro de dependentes e de despesas de saúde, educação e pensão alimentícia, avisando quando uma despesa não deduz e por quê.
+3. **Dependentes e despesas:** cadastro de dependentes e de despesas de saúde, educação e pensão alimentícia, avisando quando uma despesa não deduz e por quê.
 4. **Resultado:** a tela principal mostra um único valor (restituição ou imposto a pagar), o modelo recomendado e o cálculo detalhado nos dois modelos.
 
 O cálculo segue as tabelas oficiais de 2026, incluindo a redução da Lei 15.270/2025, e está documentado com fórmulas e fontes em [`docs/calculo-irpf-2026.md`](docs/calculo-irpf-2026.md).
@@ -50,15 +50,32 @@ O resultado é uma **estimativa**. O que vale é a declaração entregue à Rece
 
 Em desenvolvimento, rumo ao MVP. As funcionalidades estão organizadas em issues com o prefixo `RF-` no [GitHub](https://github.com/ValkorProjects/RendaFacil-2/issues).
 
-| Pronto                                                                                | Em andamento ou planejado                                    |
-| ------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
-| Motor de cálculo do ajuste anual e da folha mensal, com testes de casos de referência | Questionário inicial com triagem                             |
-| Parâmetros fiscais de 2026                                                            | Persistência das rendas e dos dependentes no Supabase        |
-| Estrutura do banco e políticas RLS definidas em [`supabase/`](supabase/)              | Telas finais de Rendas, Dependentes e Dedutíveis             |
-| Tela de Rendas com estimativa do imposto (dados ainda só em memória)                  | Home com o resultado e o detalhe do cálculo                  |
-| Cadastro, login, perfil, consentimento e política de privacidade                      | Publicação da Edge Function de exclusão e deploy de produção |
-| Documentação do cálculo                                                               |                                                              |
-| Layout base: saudação, barra inferior (Home, Rendas, Dedutíveis, Menu)                |                                                              |
+| Pronto                                                                                   | Em andamento ou planejado                                    |
+| ---------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| Motor de cálculo do ajuste anual e da folha mensal, com testes de casos de referência    | Questionário inicial com triagem                             |
+| Parâmetros fiscais de 2026                                                               | Persistência das rendas e dos dependentes no Supabase        |
+| Estrutura do banco e políticas RLS definidas em [`supabase/`](supabase/)                 | Telas finais de Rendas e Despesas                            |
+| Tela de Rendas com estimativa do imposto (dados ainda só em memória)                     | Home com o resultado e o detalhe do cálculo                  |
+| Cadastro, login, perfil, consentimento e política de privacidade                         | Publicação da Edge Function de exclusão e deploy de produção |
+| Documentação do cálculo                                                                  |                                                              |
+| Layout base: saudação, barra inferior (Home, Rendas, Despesas, Menu)                     |                                                              |
+| Cadastro de dependentes em `/dependentes`, com acesso pelo Menu e questionário de Rendas |                                                              |
+
+O cadastro de dependentes guarda apenas apelido, relação, presença em outra declaração e renda
+própria em 2026. Dependentes em outra declaração, suas rendas e despesas ficam fora do cálculo.
+Cada dependente válido deduz R$ 2.275,08 no modelo completo. Quando há renda própria sem informe
+salvo em Rendas no campo “De quem é o rendimento?”, a estimativa fica provisória.
+Ao marcar “Teve renda própria em 2026?” no cadastro do dependente, abre-se um questionário com
+tipo de rendimento, valor mensal, INSS e IR retido, com suporte a várias fontes. Os rendimentos
+são salvos junto com o dependente e aparecem automaticamente em Rendas. A opção “Preencher
+depois” mantém a pendência; editar o dependente recupera os valores já cadastrados.
+
+A tela de Despesas permite lançar despesas anuais de saúde e educação com beneficiário. A lista
+de tipos já separa as que deduzem das que não deduzem, e o reembolso só é pedido nas despesas de
+saúde dedutíveis; o motor aplica o limite de educação por pessoa. Ao excluir um dependente, a confirmação lista suas despesas
+e informa a remoção dos rendimentos vinculados. Todos esses dados ainda ficam em memória nesta
+sessão, sem persistência após recarregar a página. O questionário inicial separado segue planejado;
+o acesso atual ao cadastro está no formulário de Rendas.
 
 Fora do escopo do MVP: aluguel recebido, autônomo, MEI ou PJ (carnê-leão), aposentadoria, ganho de capital, bolsa de valores, renda do exterior e previdência privada. A lista completa está na [seção 9 da documentação do cálculo](docs/calculo-irpf-2026.md#9-fora-do-escopo-do-mvp).
 
