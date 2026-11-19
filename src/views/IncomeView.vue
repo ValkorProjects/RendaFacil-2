@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { Money3Component } from 'v-money3'
 import ConfirmDelete from '@/components/ConfirmDelete.vue'
+import MoneyInput from '@/components/MoneyInput.vue'
 import PageCard from '@/components/PageCard.vue'
 import TaxEstimateCard from '@/components/TaxEstimateCard.vue'
 import { parametros } from '@/irpf'
-import { cents, formatCurrency, moneyConfig } from '@/utils/currency'
+import { cents, formatCurrency } from '@/utils/currency'
 import {
   dependentIncomeLabels,
   incomeCategoryLabels,
@@ -185,12 +185,10 @@ const saveIncomeAndReturn = () => {
               >
                 <div class="saved-entry">
                   <span>{{ incomeCategoryLabels[income.category] }}</span>
-                  <Money3Component
+                  <MoneyInput
                     v-if="editingRegistrationId === registration.id"
                     :model-value="editingIncomes[index]?.amount ?? ''"
                     class="saved-money-input"
-                    v-bind="moneyConfig"
-                    inputmode="numeric"
                     aria-label="Editar valor do rendimento"
                     @update:model-value="updateEditingIncome(index, 'amount', $event)"
                   />
@@ -198,12 +196,10 @@ const saveIncomeAndReturn = () => {
                 </div>
                 <div class="saved-entry saved-entry-detail">
                   <span>INSS por mês</span>
-                  <Money3Component
+                  <MoneyInput
                     v-if="editingRegistrationId === registration.id"
                     :model-value="editingIncomes[index]?.inss ?? ''"
                     class="saved-money-input"
-                    v-bind="moneyConfig"
-                    inputmode="numeric"
                     aria-label="Editar INSS do rendimento"
                     @update:model-value="updateEditingIncome(index, 'inss', $event)"
                   />
@@ -211,12 +207,10 @@ const saveIncomeAndReturn = () => {
                 </div>
                 <div class="saved-entry saved-entry-detail">
                   <span>IR retido por mês</span>
-                  <Money3Component
+                  <MoneyInput
                     v-if="editingRegistrationId === registration.id"
                     :model-value="editingIncomes[index]?.irrf ?? ''"
                     class="saved-money-input"
-                    v-bind="moneyConfig"
-                    inputmode="numeric"
                     aria-label="Editar IR retido do rendimento"
                     @update:model-value="updateEditingIncome(index, 'irrf', $event)"
                   />
@@ -291,13 +285,11 @@ const saveIncomeAndReturn = () => {
               </option>
             </select>
             <label class="field-label" :for="`income-amount-${income.id}`">Valor mensal</label>
-            <Money3Component
+            <MoneyInput
               :id="`income-amount-${income.id}`"
               class="field-control currency-input"
-              inputmode="numeric"
               autocomplete="off"
               v-model="income.amount"
-              v-bind="moneyConfig"
               aria-label="Valor mensal em reais"
             />
             <div class="withheld-grid">
@@ -305,26 +297,22 @@ const saveIncomeAndReturn = () => {
                 <label class="field-label" :for="`income-inss-${income.id}`">
                   INSS descontado no mês
                 </label>
-                <Money3Component
+                <MoneyInput
                   :id="`income-inss-${income.id}`"
                   class="field-control currency-input"
-                  inputmode="numeric"
                   autocomplete="off"
                   v-model="income.inss"
-                  v-bind="moneyConfig"
                 />
               </div>
               <div>
                 <label class="field-label" :for="`income-irrf-${income.id}`">
                   IR retido na fonte no mês
                 </label>
-                <Money3Component
+                <MoneyInput
                   :id="`income-irrf-${income.id}`"
                   class="field-control currency-input"
-                  inputmode="numeric"
                   autocomplete="off"
                   v-model="income.irrf"
-                  v-bind="moneyConfig"
                 />
               </div>
             </div>
@@ -447,13 +435,11 @@ const saveIncomeAndReturn = () => {
                   <label class="field-label" :for="`dependent-amount-${dependent.id}`"
                     >Valor mensal</label
                   >
-                  <Money3Component
+                  <MoneyInput
                     :id="`dependent-amount-${dependent.id}`"
                     class="field-control currency-input"
-                    inputmode="numeric"
                     autocomplete="off"
                     v-model="dependent.amount"
-                    v-bind="moneyConfig"
                     aria-label="Valor mensal do dependente em reais"
                   />
                   <p v-if="dependent.incomeType === 'pensao'" class="exempt-note">
@@ -484,13 +470,11 @@ const saveIncomeAndReturn = () => {
           fonte de renda.
         </p>
         <label class="field-label" for="alimony-amount">Valor mensal</label>
-        <Money3Component
+        <MoneyInput
           id="alimony-amount"
           class="field-control currency-input"
-          inputmode="numeric"
           autocomplete="off"
           v-model="incomeStore.alimonyPaid"
-          v-bind="moneyConfig"
         />
       </section>
 
