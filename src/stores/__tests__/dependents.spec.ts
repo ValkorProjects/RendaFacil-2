@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
-import { buildTaxInput, useIncomeStore } from '@/stores/income'
+import { calcularFolhaMensal } from '@/irpf'
+import { buildTaxInput, fillIncomeFromSalary, useIncomeStore } from '@/stores/income'
+import { formatMoneyInput } from '@/utils/currency'
 import { emptyDependent, type DependentFields } from '@/utils/dependents'
 
 beforeEach(() => setActivePinia(createPinia()))
@@ -263,6 +265,30 @@ describe('RF-11 · cadastro e cálculo de dependentes', () => {
       deducaoDependentes: 0,
       pensao: 0,
     })
+  })
+
+  it('calcula INSS e IR da renda do dependente pelo salário, sem os dependentes e a pensão do titular', () => {
+    const store = useIncomeStore()
+    addDependent()
+    addDependent({ apelido: 'Bia' })
+    store.alimonyPaid = 'R$ 800,00'
+    const income = { id: -1, category: 'clt' as const, amount: 'R$ 6.500,00', inss: '', irrf: '' }
+
+    expect(fillIncomeFromSalary(income, 0, '')).toBe('')
+
+    const own = calcularFolhaMensal({ bruto: 650_000, dependentes: 0, pensao: 0 })
+    expect(income).toMatchObject({
+      inss: 'R$ 711,51',
+      irrf: formatMoneyInput(own.irrf),
+    })
+    // Com os 2 dependentes e a pensão do titular seria R$ 248,42 (caso F1).
+    expect(income.irrf).not.toBe('R$ 248,42')
+  })
+
+  it('devolve a mensagem do motor quando o salário não pode ser calculado', () => {
+    const income = { id: -1, category: 'clt' as const, amount: '', inss: '', irrf: '' }
+    expect(fillIncomeFromSalary(income, -1, '')).not.toBe('')
+    expect(income).toMatchObject({ inss: '', irrf: '' })
   })
 
   it('limpa despesas, dependentes e pendências ao limpar a conta', () => {

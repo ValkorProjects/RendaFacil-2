@@ -103,6 +103,27 @@ export const payrollEstimate = (
   }
 }
 
+// Fills INSS and the tax withheld from the monthly payroll calculation, assuming a CLT salary
+// that is the same every month. Returns an error message when the engine can't calculate it.
+export const fillIncomeFromSalary = (
+  income: RegisteredIncomeEntry,
+  dependents: number,
+  alimonyPaid: string,
+) => {
+  try {
+    const payroll = calcularFolhaMensal({
+      bruto: cents(income.amount),
+      dependentes: dependents,
+      pensao: cents(alimonyPaid),
+    })
+    income.inss = formatMoneyInput(payroll.inss)
+    income.irrf = formatMoneyInput(payroll.irrf)
+    return ''
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error)
+  }
+}
+
 // Warnings (never blocking) when the typed INSS or income tax doesn't match the payslip
 // calculation. The informe de rendimentos is what counts, and it can differ for real reasons:
 // férias, a second employer sharing the INSS ceiling, extra deductions.
@@ -322,23 +343,18 @@ export const useIncomeStore = defineStore('income', () => {
     draftIncomes.value.push(newIncomeEntry(nextDraftId++))
   }
 
-  // Fills INSS and the tax withheld from the monthly payroll calculation, assuming a CLT salary
-  // that is the same every month. Returns an error message when the engine can't calculate it.
+  // The holder's sources use the declaration's dependents and alimony; a dependent's own income
+  // has neither.
   const fillDraftIncomeFromSalary = (id: number) => {
     const income = draftIncomes.value.find((item) => item.id === id)
     if (!income) return ''
-    try {
-      const payroll = calcularFolhaMensal({
-        bruto: cents(income.amount),
-        dependentes: income.dependentId == null ? validDependents(household.value).length : 0,
-        pensao: income.dependentId == null ? cents(household.value.alimonyPaid) : 0,
-      })
-      income.inss = formatMoneyInput(payroll.inss)
-      income.irrf = formatMoneyInput(payroll.irrf)
-      return ''
-    } catch (error) {
-      return error instanceof Error ? error.message : String(error)
-    }
+    return income.dependentId == null
+      ? fillIncomeFromSalary(
+          income,
+          validDependents(household.value).length,
+          household.value.alimonyPaid,
+        )
+      : fillIncomeFromSalary(income, 0, '')
   }
 
   const removeDraftIncome = (id: number) => {
