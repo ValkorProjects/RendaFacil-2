@@ -312,7 +312,7 @@ Para desligar os containers ao terminar:
 npx supabase stop
 ```
 
-No CI, o job `database` roda esses testes nos pull requests que mudam algo em `supabase/`, no `.github/workflows/ci.yml` ou no `package.json` (que fixa a versão da CLI do Supabase).
+No CI, o job `database` roda esses testes nos pull requests que mudam algo em `supabase/`, no `.github/workflows/ci.yml`, no `package.json` ou no `package-lock.json` (que fixam a versão da CLI do Supabase).
 
 Uma tabela nova em `public` precisa de RLS ligada, de políticas e de `revoke` dos privilégios que o Supabase concede por padrão a `anon` e `authenticated`. Sem isso, os testes falham.
 

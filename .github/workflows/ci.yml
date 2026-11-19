@@ -46,8 +46,8 @@ jobs:
 
   # RLS and privilege tests (RF-20): pgTAP against a database built from scratch by the
   # migrations. Starting Postgres in Docker takes a while, so the steps only run when something
-  # under supabase/ changed, or this workflow or package.json (which pins the Supabase CLI);
-  # otherwise the job passes right away.
+  # under supabase/ changed, or this workflow, package.json or package-lock.json (which pin the
+  # Supabase CLI); otherwise the job passes right away.
   database:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -64,8 +64,8 @@ jobs:
           if [ -z "$BASE" ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
             echo "No base commit to compare; running the tests."
             echo "run=true" >> "$GITHUB_OUTPUT"
-          elif git diff --quiet "$BASE" HEAD -- supabase/ .github/workflows/ci.yml package.json; then
-            echo "Nothing changed in supabase/, ci.yml or package.json; skipping the database tests."
+          elif git diff --quiet "$BASE" HEAD -- supabase/ .github/workflows/ci.yml package.json package-lock.json; then
+            echo "Nothing changed in supabase/, ci.yml, package.json or package-lock.json; skipping the database tests."
             echo "run=false" >> "$GITHUB_OUTPUT"
           else
             echo "run=true" >> "$GITHUB_OUTPUT"

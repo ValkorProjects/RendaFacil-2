@@ -101,16 +101,20 @@ select is_empty(
 
 -- Caminhos que ignoram a RLS ------------------------------------------------------------------
 -- Uma view roda com os privilégios do dono e mostra as linhas de todos, a menos que seja
--- security_invoker. Uma função security definer também ignora a RLS, então a execução dela fica
--- revogada de anon e authenticated (inclusive as de trigger, que o Postgres chama sem precisar
--- desse privilégio).
+-- security_invoker. O Postgres guarda o valor da opção como foi digitado (true, on, 1...), então
+-- o teste converte o texto para boolean em vez de comparar. Uma função security definer também
+-- ignora a RLS, então a execução dela fica revogada de anon e authenticated (inclusive as de
+-- trigger, que o Postgres chama sem precisar desse privilégio).
 
 select is_empty(
   $$ select c.relname
      from pg_class c
      join pg_namespace n on n.oid = c.relnamespace
      where n.nspname = 'public' and c.relkind in ('v', 'm')
-       and not coalesce(c.reloptions @> array['security_invoker=true'], false) $$,
+       and not exists (
+         select 1 from pg_options_to_table(c.reloptions) o
+         where o.option_name = 'security_invoker' and o.option_value::boolean
+       ) $$,
   'nenhuma view de public ignora a RLS (todas com security_invoker)');
 
 select is_empty(
