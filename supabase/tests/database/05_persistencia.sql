@@ -147,7 +147,11 @@ select extensions.is(
   'preserves profit-sharing when a later patch omits it'
 );
 select extensions.is(
-  (select fontes_esperadas from public.declaracoes where user_id = auth.uid()),
+  (
+    select fontes_esperadas
+    from public.declaracoes
+    where user_id = auth.uid() and ano_calendario = 2026
+  ),
   2,
   'saves and preserves the expected source count'
 );

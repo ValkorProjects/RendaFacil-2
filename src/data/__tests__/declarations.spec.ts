@@ -29,6 +29,31 @@ const fill = (store: ReturnType<typeof useIncomeStore>, amount = 'R$ 6.500,00') 
 }
 
 describe('RF · persistence with a mocked Supabase client', () => {
+  it('creates stable UUIDs without crypto.randomUUID', () => {
+    const mapper = createIncomeMapper(() => 1)
+    const state = {
+      registrations: [
+        {
+          id: 1,
+          incomes: [{ id: 2, category: 'clt' as const, amount: 'R$ 1.000,00', inss: '', irrf: '' }],
+        },
+      ],
+      household: { dependents: [], expenses: [] },
+    }
+    const randomUuid = vi.spyOn(crypto, 'randomUUID').mockImplementation(() => {
+      throw new Error('crypto.randomUUID unavailable')
+    })
+
+    const first = mapper.toRows(state, emptyDeclaration(), USER_A)
+    const retry = mapper.toRows(state, emptyDeclaration(), USER_A)
+
+    expect(first.sources[0]!.id).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+    )
+    expect(retry.sources[0]!.id).toBe(first.sources[0]!.id)
+    expect(randomUuid).not.toHaveBeenCalled()
+  })
+
   it('scopes reads to the owner and 2026, without creating an empty declaration on entry', async () => {
     const repo = createDeclarationRepository(db.client)
     expect(await repo.load(USER_A)).toEqual(emptyDeclaration())
