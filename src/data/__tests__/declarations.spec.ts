@@ -109,6 +109,7 @@ describe('RF · persistence with a mocked Supabase client', () => {
       dependente_id: String(person.id),
       valor_centavos: 12345,
       reembolso_centavos: 345,
+      data: '2026-03-10',
       recebedor: '',
       pensao_iniciou_em_2026: false,
       base_legal_ok: null,
@@ -123,6 +124,7 @@ describe('RF · persistence with a mocked Supabase client', () => {
       pensao_iniciou_em_2026: true,
       valor_centavos: 250000,
       reembolso_centavos: 0,
+      data: '2026-07-01',
       base_legal_ok: true,
     })
     const estimate = store.taxEstimate
@@ -133,11 +135,18 @@ describe('RF · persistence with a mocked Supabase client', () => {
     await store.loadAccount(USER_A)
     expect(store.registrations).toHaveLength(1)
     expect(store.dependents[0]).toMatchObject({ apelido: 'Lia', relacao: 'conjuge_companheiro' })
-    expect(store.expenses[0]).toMatchObject({ valor_centavos: 12345, reembolso_centavos: 345 })
+    // The payment date and the alimony fields survive the round trip through the database.
+    expect(store.expenses[0]).toMatchObject({
+      valor_centavos: 12345,
+      reembolso_centavos: 345,
+      data: '2026-03-10',
+      descricao: 'Consulta',
+    })
     expect(store.expenses[1]).toMatchObject({
       categoria: 'pensao',
       recebedor: 'Lia',
       pensao_iniciou_em_2026: true,
+      data: '2026-07-01',
     })
     expect(store.taxEstimate).toEqual(estimate)
     expect(store.registrations[0]!.incomes[0]!.dependentId).toBe(store.dependents[0]!.id)

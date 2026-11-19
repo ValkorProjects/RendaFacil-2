@@ -258,16 +258,17 @@ test('dependents without income survive saving and account data is cleared on si
   income.draftIncomes[0].amount = '20000'
   assert.equal(
     await income.addExpense({
-      descricao: 'Pensão alimentícia',
       categoria: 'pensao',
       tipo: 'pensao_alimenticia',
       beneficiario: 'outra',
       dependente_id: null,
-      recebedor: 'Pessoa beneficiada',
-      pensao_iniciou_em_2026: false,
-      valor_centavos: 800000,
+      valor_centavos: 960000,
       reembolso_centavos: 0,
       base_legal_ok: true,
+      data: '2026-01-01',
+      descricao: '',
+      recebedor: 'Pessoa beneficiária',
+      pensao_iniciou_em_2026: false,
     }),
     true,
   )
@@ -275,7 +276,7 @@ test('dependents without income survive saving and account data is cleared on si
   assert.equal(income.registrations.length, 0)
   assert.equal(income.draftIncomes[0].amount, '')
   assert.equal(income.dependentCount, 0)
-  assert.deepEqual(income.expenses, [])
+  assert.equal(income.expenses.length, 0)
 })
 
 test('deletion failure preserves the account and data; confirmed deletion signs out and clears them', async () => {

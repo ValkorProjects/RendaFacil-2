@@ -1,7 +1,9 @@
 import { databaseMock, USER_A } from '@/data/__tests__/supabaseMock'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
-import { buildTaxInput, useIncomeStore } from '@/stores/income'
+import { calcularFolhaMensal } from '@/irpf'
+import { buildTaxInput, fillIncomeFromSalary, useIncomeStore } from '@/stores/income'
+import { formatMoneyInput } from '@/utils/currency'
 import { emptyDependent, type DependentFields } from '@/utils/dependents'
 
 vi.mock('@/lib/supabase', () => ({ getSupabase: () => databaseMock.client }))
@@ -34,6 +36,7 @@ const expense = (id: number | null, description = 'Escola') => ({
   valor_centavos: 500_000,
   reembolso_centavos: 0,
   base_legal_ok: null,
+  data: '2026-03-10',
   recebedor: '',
   pensao_iniciou_em_2026: false,
 })
@@ -273,6 +276,28 @@ describe('RF-11 · cadastro e cálculo de dependentes', () => {
       dependentes: 0,
       deducaoDependentes: 0,
     })
+  })
+
+  it('calcula INSS e IR da renda do dependente pelo salário, sem os dependentes do titular', async () => {
+    await addDependent()
+    await addDependent({ apelido: 'Bia' })
+    const income = { id: -1, category: 'clt' as const, amount: 'R$ 6.500,00', inss: '', irrf: '' }
+
+    expect(fillIncomeFromSalary(income, 0)).toBe('')
+
+    const own = calcularFolhaMensal({ bruto: 650_000, dependentes: 0, pensao: 0 })
+    expect(income).toMatchObject({
+      inss: 'R$ 711,51',
+      irrf: formatMoneyInput(own.irrf),
+    })
+    // Com os 2 dependentes do titular seria R$ 465,65.
+    expect(income.irrf).not.toBe('R$ 465,65')
+  })
+
+  it('devolve a mensagem do motor quando o salário não pode ser calculado', () => {
+    const income = { id: -1, category: 'clt' as const, amount: '', inss: '', irrf: '' }
+    expect(fillIncomeFromSalary(income, -1)).not.toBe('')
+    expect(income).toMatchObject({ inss: '', irrf: '' })
   })
 
   it('limpa despesas, dependentes e pendências ao limpar a conta', async () => {

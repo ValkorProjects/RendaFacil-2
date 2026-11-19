@@ -89,7 +89,7 @@ const closeForm = async () => {
 }
 const save = async () => {
   if (store.saving || !canSave.value) return
-  const incomes = draft.value.teve_renda_propria && !fillIncomeLater.value ? incomeDrafts.value : []
+  const incomes = asksIncome.value && !fillIncomeLater.value ? incomeDrafts.value : []
   if (!(await store.saveDependentWithIncomes(draft.value, incomes, editingId.value))) {
     saveError.value =
       'Não foi possível salvar. Confira os valores dos rendimentos e tente novamente.'

@@ -247,7 +247,7 @@ O catálogo fica em [`src/irpf/despesas.ts`](../src/irpf/despesas.ts). A chave d
 
 ## 8. Como usar o motor
 
-A API pública fica em [`src/irpf/index.ts`](../src/irpf/index.ts). As telas convertem seus cadastros para linhas da declaração e passam para o motor, sem fazer conta própria. Atualmente, os cadastros de rendimentos e despesas ficam em memória; a persistência no Supabase ainda está planejada:
+A API pública fica em [`src/irpf/index.ts`](../src/irpf/index.ts). As telas convertem seus cadastros para linhas da declaração e passam para o motor, sem fazer conta própria. Os cadastros de rendimentos, dependentes e despesas são salvos no Supabase, na declaração de 2026 da conta (`src/data/`), e o estado da tela só muda depois que o servidor confirma:
 
 ```ts
 import { calcularAjusteAnual, montarEntrada } from '@/irpf'
@@ -282,17 +282,18 @@ const resultado = calcularAjusteAnual({
 
 ### 8.1 Estimativa parcial nas telas
 
-A tela de Rendas usa o motor para exibir uma estimativa parcial. Os dados digitados ficam no estado local até serem salvos e, depois, são persistidos no Supabase na declaração de 2026 vinculada à conta:
+As telas de Rendas, Dependentes e Despesas usam o motor. Os dados digitados ficam no estado local até serem salvos e, depois, são persistidos no Supabase, na declaração de 2026 vinculada à conta:
 
-| Na tela (por mês)                                | No motor (por ano, × 12)                      |
-| ------------------------------------------------ | --------------------------------------------- |
-| Valor mensal de cada rendimento                  | `fontes[].rendimentos`                        |
-| INSS descontado no mês                           | `fontes[].previdencia`                        |
-| IR retido na fonte no mês                        | `fontes[].irrf`                               |
-| Renda tributável de dependente (estágio, outros) | uma fonte a mais, sem INSS nem IRRF           |
-| Pensão recebida por dependente                   | fica fora (isenta)                            |
-| Cada dependente, com ou sem renda                | `dependentes`                                 |
-| Despesas anuais lançadas em Dedutíveis           | `despesas[]` (`saude`, `educacao`, `pensoes`) |
+| Cadastro na tela                                        | No motor                                                   |
+| ------------------------------------------------------- | ---------------------------------------------------------- |
+| Valor mensal de cada rendimento                         | `fontes[].rendimentos` (anualizado × 12)                   |
+| INSS descontado no mês                                  | `fontes[].previdencia` (anualizado × 12)                   |
+| IR retido na fonte no mês                               | `fontes[].irrf` (anualizado × 12)                          |
+| Rendimento de um dependente ("De quem é o rendimento?") | uma fonte com `dependente_id`; fora se ele não for válido  |
+| Pensão alimentícia recebida                             | fica fora (isenta)                                         |
+| Cada dependente não marcado em outra declaração         | `dependentes`                                              |
+| Despesas de saúde e educação cadastradas em Despesas    | `saude` e `educacao`, com validação e limite por pessoa    |
+| Pensão alimentícia paga, cadastrada em Despesas         | `pensoes`, só com a base legal; fora da simulação da folha |
 
 Para uma fonte CLT, a tela compara o INSS e o IR retido digitados com a folha mensal (`incomeEntryWarnings`) e avisa, sem bloquear, quando diferem mais de R$ 0,10 (INSS acima da tabela, IR retido diferente da tabela). Férias, 13º, um segundo empregador e deduções extras explicam diferenças legítimas, e o informe de rendimentos é o que vale. A visão **Mensal** do cartão mostra a conta da folha ao lado dos valores informados. Ela supõe o mesmo salário o ano todo; escolher um mês específico está como TODO em `TaxEstimateCard.vue`.
 

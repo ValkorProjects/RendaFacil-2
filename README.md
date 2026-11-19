@@ -54,12 +54,14 @@ Em desenvolvimento, rumo ao MVP. As funcionalidades estão organizadas em issues
 | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
 | Motor de cálculo do ajuste anual e da folha mensal, com testes de casos de referência    | Questionário inicial com triagem                             |
 | Parâmetros fiscais de 2026                                                               | —                                                            |
-| Estrutura do banco e políticas RLS definidas em [`supabase/`](supabase/)                 | Telas finais de Rendas e Dedutíveis                          |
-| Rendas, dependentes e despesas persistidos no Supabase                                   | Home com o resultado e o detalhe do cálculo                  |
+| Estrutura do banco e políticas RLS definidas em [`supabase/`](supabase/)                 | Tela final de Rendas                                         |
+| Tela de Rendas com estimativa do imposto                                                 | Home com o resultado e o detalhe do cálculo                  |
 | Cadastro, login, perfil, consentimento e política de privacidade                         | Publicação da Edge Function de exclusão e deploy de produção |
 | Documentação do cálculo                                                                  | —                                                            |
-| Layout base: saudação, barra inferior (Home, Rendas, Dedutíveis, Menu)                   | —                                                            |
+| Layout base: saudação, barra inferior (Home, Rendas, Despesas, Menu)                     | —                                                            |
 | Cadastro de dependentes em `/dependentes`, com acesso pelo Menu e questionário de Rendas | —                                                            |
+| Tela de Despesas com cadastro, efeito de cada despesa e barra do limite de educação      | —                                                            |
+| Rendas, dependentes e despesas persistidos no Supabase                                   | —                                                            |
 
 O cadastro de dependentes guarda apenas apelido, relação, presença em outra declaração e renda
 própria em 2026. Dependentes em outra declaração, suas rendas e despesas ficam fora do cálculo.
@@ -70,11 +72,15 @@ tipo de rendimento, valor mensal, INSS e IR retido, com suporte a várias fontes
 são salvos junto com o dependente e aparecem automaticamente em Rendas. A opção “Preencher
 depois” mantém a pendência; editar o dependente recupera os valores já cadastrados.
 
-Dedutíveis permite lançar despesas anuais de saúde, educação e pensão alimentícia. O motor aplica
-o limite de educação por pessoa e informa quando uma despesa não é dedutível. Ao excluir um
-dependente, a confirmação lista suas despesas e informa a remoção dos rendimentos vinculados.
-Esses dados ficam na declaração da conta e são carregados ao entrar. O questionário inicial separado
-segue planejado; o acesso atual ao cadastro está no formulário de Rendas.
+A tela de Despesas lança despesas de saúde, educação e a pensão alimentícia paga, em duas etapas
+(tipo, depois os dados). A lista de tipos já separa as que deduzem das que não deduzem, e o
+reembolso só é pedido nas despesas de saúde dedutíveis. Enquanto o valor é digitado, a tela mostra
+quanto a despesa pode reduzir o imposto (RF-07), e uma barra mostra o uso do limite de educação de
+cada pessoa. A pensão paga só deduz com a confirmação da base legal (decisão judicial, acordo
+homologado ou escritura pública). Ao excluir um dependente, a confirmação lista suas despesas
+e informa a remoção dos rendimentos vinculados. Esses dados ficam na declaração da conta e são
+carregados ao entrar. O questionário inicial separado segue planejado; o acesso atual ao cadastro
+está no formulário de Rendas.
 
 Fora do escopo do MVP: aluguel recebido, autônomo, MEI ou PJ (carnê-leão), aposentadoria, ganho de capital, bolsa de valores, renda do exterior e previdência privada. A lista completa está na [seção 9 da documentação do cálculo](docs/calculo-irpf-2026.md#9-fora-do-escopo-do-mvp).
 
@@ -258,9 +264,8 @@ contas anteriores ao trigger de cadastro.
 
 As rendas são gravadas em centavos **anuais**; o formulário mostra a média mensal. Valores anuais
 que não dividem por 12 são preservados exatamente enquanto o campo não muda. Despesas, inclusive
-pensão alimentícia, usam centavos anuais; até o formulário coletar uma data específica, `data`
-representa o fechamento do ano (`2026-12-31`). A pensão é lançada em Dedutíveis com o nome de quem
-a recebeu e a informação de base legal. As relações do formulário são convertidas explicitamente
+pensão alimentícia, usam centavos anuais e guardam a data do pagamento informada na tela. A pensão é
+lançada em Despesas com o nome de quem a recebeu, se começou em 2026 e a confirmação da base legal. As relações do formulário são convertidas explicitamente
 para `conjuge` e `pais_avos`, como definido no RF-02.
 
 ### Conectar um projeto
@@ -326,19 +331,43 @@ Para gerar a partir de um projeto remoto autenticado:
 npm run db:types -- --remote=SEU_PROJECT_REF
 ```
 
-O script só substitui o arquivo após a geração terminar com sucesso. Não edite os tipos à mão.
+### Testes do banco (RLS e persistência)
 
-### Testes de persistência
+O app fala com o Supabase direto do navegador, com a chave pública. A única barreira entre um usuário e os dados de outro são as políticas de RLS e os privilégios definidos nas migrations. Se uma migration apagar uma política ou liberar um privilégio, nada no app quebra, e a falha fica aberta. Os testes em [`supabase/tests/database/`](supabase/tests/database/) conferem isso automaticamente, com [pgTAP](https://pgtap.org/), num banco criado do zero pelas migrations:
 
-`npm test` cobre a camada de dados com cliente Supabase simulado, recarga, troca de conta,
-erros de rede, edições, exclusões e preservação de centavos. Para verificar as políticas RLS e
-rollback transacional no Postgres local, inicie a stack com `npx supabase db start` e rode:
+- um usuário não lê, não altera, não apaga e não cria dados de outro, nem dentro da declaração de outro;
+- `anon` não tem nenhum privilégio, e `authenticated` tem só `SELECT`, `INSERT`, `UPDATE` e `DELETE` (em `perfis`, só `SELECT`: o registro do aceite não pode ser alterado);
+- toda tabela de `public` tem RLS ligada, nenhuma view ignora a RLS e nenhuma função `security definer` pode ser chamada por `anon` ou `authenticated`;
+- o cadastro cria o perfil e a declaração de 2026, é recusado sem o aceite da política de privacidade, e o usuário não altera nem apaga o registro do aceite;
+- apagar o usuário em `auth.users` apaga todas as linhas dele;
+- a função `salvar_lancamentos`, que grava rendas, dependentes e despesas, roda como o usuário que a chamou (a RLS vale), grava só as linhas que mudaram numa única transação, é recusada sem login e não aceita linhas de outra conta;
+- dinheiro fica só em `bigint`, e não há colunas de CPF, data de nascimento ou diagnóstico.
+
+Para rodar localmente, é preciso ter o [Docker](https://docs.docker.com/get-started/get-docker/) instalado e aberto. Suba o Postgres local (a primeira vez baixa as imagens e demora alguns minutos):
+
+```bash
+npx supabase db start
+```
 
 ```bash
 npx supabase test db
 ```
 
-As contas temporárias do teste são revertidas ao final da transação.
+Depois de mudar uma migration, recrie o banco antes de testar de novo:
+
+```bash
+npx supabase db reset
+```
+
+Para desligar os containers ao terminar:
+
+```bash
+npx supabase stop
+```
+
+No CI, o job `database` roda esses testes nos pull requests que mudam algo em `supabase/`, no `.github/workflows/ci.yml`, no `package.json` ou no `package-lock.json` (que fixam a versão da CLI do Supabase).
+
+Uma tabela nova em `public` precisa de RLS ligada, de políticas e de `revoke` dos privilégios que o Supabase concede por padrão a `anon` e `authenticated`. Sem isso, os testes falham.
 
 ### Funcionamento offline
 

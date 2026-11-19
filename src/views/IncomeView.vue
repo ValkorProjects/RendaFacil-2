@@ -34,11 +34,7 @@ const salaryErrors = ref<Record<number, string>>({})
 // The payslip checks use the declaration's dependents for the holder's sources.
 const incomeWarnings = (income: RegisteredIncomeEntry | undefined) =>
   income
-    ? incomeEntryWarnings(
-        income,
-        income.dependentId == null ? incomeStore.dependentCount : 0,
-        income.dependentId == null ? incomeStore.monthlyPensionPaid : 0,
-      )
+    ? incomeEntryWarnings(income, income.dependentId == null ? incomeStore.dependentCount : 0)
     : []
 
 const fillFromSalary = (id: number) => {

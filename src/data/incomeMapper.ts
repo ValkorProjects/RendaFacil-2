@@ -94,13 +94,24 @@ export function createIncomeMapper(nextId: () => number) {
       registrations,
       household: {
         dependents,
-        expenses: data.expenses.map((row) => ({
-          ...expenseForEngine(row),
-          id: String(uiId('expense', row.id)),
-          descricao: row.descricao ?? '',
-          dependente_id:
-            row.dependente_id === null ? null : String(uiId('dependent', row.dependente_id)),
-        })),
+        expenses: data.expenses.map((row) => {
+          const engineRow = expenseForEngine(row)
+          return {
+            id: uiId('expense', row.id),
+            categoria: engineRow.categoria,
+            tipo: row.tipo,
+            beneficiario: engineRow.beneficiario,
+            dependente_id:
+              row.dependente_id === null ? null : String(uiId('dependent', row.dependente_id)),
+            recebedor: row.recebedor,
+            pensao_iniciou_em_2026: row.pensao_iniciou_em_2026,
+            valor_centavos: row.valor_centavos,
+            reembolso_centavos: row.reembolso_centavos,
+            base_legal_ok: row.base_legal_ok,
+            data: row.data,
+            descricao: row.descricao ?? '',
+          }
+        }),
       },
     }
   }
@@ -154,14 +165,21 @@ export function createIncomeMapper(nextId: () => number) {
       ),
       expenses: (state.household.expenses ?? []).map((expense) => ({
         ...scope,
-        data: '2026-12-31',
-        ...before.expenses.find((row) => row.id === databaseId('expense', Number(expense.id))),
-        ...expense,
-        id: databaseId('expense', Number(expense.id)),
+        id: databaseId('expense', expense.id),
+        categoria: expense.categoria,
+        tipo: expense.tipo,
+        beneficiario: expense.beneficiario,
         dependente_id:
           expense.dependente_id === null
             ? null
             : databaseId('dependent', Number(expense.dependente_id)),
+        recebedor: expense.recebedor,
+        pensao_iniciou_em_2026: expense.pensao_iniciou_em_2026,
+        valor_centavos: expense.valor_centavos,
+        reembolso_centavos: expense.reembolso_centavos,
+        base_legal_ok: expense.base_legal_ok,
+        data: expense.data,
+        descricao: expense.descricao,
       })),
     }
   }
