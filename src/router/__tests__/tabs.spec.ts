@@ -3,7 +3,7 @@ import { TABS, tabForRoute } from '@/router/tabs'
 
 describe('barra inferior (RF-09)', () => {
   it('tem as 4 abas do esboço, cada uma com rótulo de texto', () => {
-    expect(TABS.map((tab) => tab.label)).toEqual(['Home', 'Rendas', 'Dedutíveis', 'Menu'])
+    expect(TABS.map((tab) => tab.label)).toEqual(['Home', 'Rendas', 'Despesas', 'Menu'])
     expect(new Set(TABS.map((tab) => tab.route)).size).toBe(4)
   })
 

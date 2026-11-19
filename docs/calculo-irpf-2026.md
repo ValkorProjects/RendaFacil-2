@@ -282,7 +282,7 @@ const resultado = calcularAjusteAnual({
 
 ### 8.1 Estimativa parcial na tela de Rendas
 
-Enquanto as telas de Rendas (RF-12), Dedutíveis (RF-13) e a Home (RF-14) não existem na forma final, a tela de cadastro de rendimentos já usa o motor, com os dados guardados só em memória:
+Enquanto as telas de Rendas (RF-12), Despesas (RF-13) e a Home (RF-14) não existem na forma final, a tela de cadastro de rendimentos já usa o motor, com os dados guardados só em memória:
 
 | Na tela (por mês)                                | No motor (por ano, × 12)                     |
 | ------------------------------------------------ | -------------------------------------------- |
