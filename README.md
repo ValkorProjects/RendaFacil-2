@@ -59,6 +59,7 @@ Em desenvolvimento, rumo ao MVP. As funcionalidades estão organizadas em issues
 | Tela de Dedutíveis com cadastro, efeitos e barra de educação (dados em memória)       | Persistência das rendas, dependentes e despesas no Supabase  |
 | Cadastro, login, perfil, consentimento e política de privacidade                      |                                                              |
 | Documentação do cálculo                                                               |                                                              |
+| Layout base: saudação, barra inferior (Home, Rendas, Dedutíveis, Menu)                |                                                              |
 
 Fora do escopo do MVP: aluguel recebido, autônomo, MEI ou PJ (carnê-leão), aposentadoria, ganho de capital, bolsa de valores, renda do exterior e previdência privada. A lista completa está na [seção 9 da documentação do cálculo](docs/calculo-irpf-2026.md#9-fora-do-escopo-do-mvp).
 
@@ -166,7 +167,8 @@ npm run build
 ├── public/                    Arquivos estáticos (favicon e ícones do app)
 ├── src/
 │   ├── assets/main.css        Estilos globais e variáveis de cor
-│   ├── components/            Componentes reutilizáveis (navegação, cartões, ícones)
+│   ├── components/            Componentes reutilizáveis (cabeçalho, navegação, cartões, ícones,
+│   │                          carregando, lista vazia, erro e confirmação de exclusão)
 │   │   └── TaxEstimateCard.vue  Estimativa do imposto e "Ver o cálculo" na tela de Rendas
 │   ├── composables/
 │   │   └── usePwaInstall.ts   Botão "Instalar app"
@@ -174,17 +176,18 @@ npm run build
 │   │   ├── parametros/        Tabelas e valores de cada ano-calendário
 │   │   └── __tests__/         Casos de referência do motor
 │   ├── lib/supabase.ts        Cliente do Supabase
-│   ├── router/index.ts        Rotas
+│   ├── router/                Rotas (index.ts) e abas da barra inferior (tabs.ts)
 │   ├── stores/                Estado global (sessão do usuário, rendas da tela de Rendas)
 │   ├── types/database.types.ts  Tipos do banco
 │   ├── utils/                 Formatação de moeda e do resultado
 │   ├── views/                 Uma tela por arquivo
-│   ├── App.vue                Estrutura do app: tela atual e navegação
+│   ├── App.vue                Estrutura do app: saudação, tela atual e barra inferior
 │   └── main.ts                Ponto de entrada
 ├── supabase/
 │   ├── config.toml            Configuração do Supabase local
 │   ├── functions/             Edge Function delete-account (exclusão de conta)
-│   └── migrations/            Tabelas e políticas de acesso (RLS) do banco
+│   ├── migrations/            Tabelas e políticas de acesso (RLS) do banco
+│   └── tests/database/        Testes de RLS e privilégios (pgTAP)
 ├── tests/                     Testes Node de perfil e exclusão de conta
 ├── .env.example               Modelo das variáveis de ambiente
 ├── vite.config.ts             Configuração do Vite e do PWA
@@ -276,6 +279,43 @@ npx supabase login
 ```bash
 npx supabase gen types typescript --project-id seu-project-ref > src/types/database.types.ts
 ```
+
+### Testes do banco (RLS)
+
+O app fala com o Supabase direto do navegador, com a chave pública. A única barreira entre um usuário e os dados de outro são as políticas de RLS e os privilégios definidos nas migrations. Se uma migration apagar uma política ou liberar um privilégio, nada no app quebra, e a falha fica aberta. Os testes em [`supabase/tests/database/`](supabase/tests/database/) conferem isso automaticamente, com [pgTAP](https://pgtap.org/), num banco criado do zero pelas migrations:
+
+- um usuário não lê, não altera, não apaga e não cria dados de outro, nem dentro da declaração de outro;
+- `anon` não tem nenhum privilégio, e `authenticated` tem só `SELECT`, `INSERT`, `UPDATE` e `DELETE` (em `perfis`, só `SELECT`: o registro do aceite não pode ser alterado);
+- toda tabela de `public` tem RLS ligada, nenhuma view ignora a RLS e nenhuma função `security definer` pode ser chamada por `anon` ou `authenticated`;
+- o cadastro cria o perfil e a declaração de 2026, é recusado sem o aceite da política de privacidade, e o usuário não altera nem apaga o registro do aceite;
+- apagar o usuário em `auth.users` apaga todas as linhas dele;
+- dinheiro fica só em `bigint`, e não há colunas de CPF, data de nascimento ou diagnóstico.
+
+Para rodar localmente, é preciso ter o [Docker](https://docs.docker.com/get-started/get-docker/) instalado e aberto. Suba o Postgres local (a primeira vez baixa as imagens e demora alguns minutos):
+
+```bash
+npx supabase db start
+```
+
+```bash
+npx supabase test db
+```
+
+Depois de mudar uma migration, recrie o banco antes de testar de novo:
+
+```bash
+npx supabase db reset
+```
+
+Para desligar os containers ao terminar:
+
+```bash
+npx supabase stop
+```
+
+No CI, o job `database` roda esses testes nos pull requests que mudam algo em `supabase/`, no `.github/workflows/ci.yml`, no `package.json` ou no `package-lock.json` (que fixam a versão da CLI do Supabase).
+
+Uma tabela nova em `public` precisa de RLS ligada, de políticas e de `revoke` dos privilégios que o Supabase concede por padrão a `anon` e `authenticated`. Sem isso, os testes falham.
 
 ### Funcionamento offline
 

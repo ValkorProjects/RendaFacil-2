@@ -17,15 +17,7 @@ import {
 
 const auth = useAuthStore()
 const income = useIncomeStore()
-const dependents = computed(() =>
-  income.registrations.flatMap((registration, registrationIndex) =>
-    registration.dependents.map((dependent) => ({
-      ...dependent,
-      key: `${registration.id}-${dependent.id}`,
-      registrationNumber: registrationIndex + 1,
-    })),
-  ),
-)
+const dependents = computed(() => income.household.dependents)
 const { user, ready, isGuest, initializationError, recoveryPending, redirectNotice } =
   storeToRefs(auth)
 const profile = computed(() => readProfile(user.value))
@@ -746,18 +738,17 @@ async function signOut() {
             <h2 id="profile-dependents-title">
               Meus dependentes <span class="account-badge">{{ dependents.length }}</span>
             </h2>
-            <p>Dependentes informados no cadastro de rendimentos desta sessão.</p>
+            <p>Dependentes informados na tela de rendimentos nesta sessão.</p>
           </div>
           <RouterLink :to="{ name: 'income' }" class="text-button"
             >Gerenciar dependentes</RouterLink
           >
         </div>
         <ul v-if="dependents.length" class="dependent-list">
-          <li v-for="(dependent, index) in dependents" :key="dependent.key" class="dependent-item">
+          <li v-for="(dependent, index) in dependents" :key="dependent.id" class="dependent-item">
             <div>
               <h3>Dependente {{ index + 1 }}</h3>
               <p>{{ dependentIncomeLabels[dependent.incomeType] }}</p>
-              <small>Cadastro de rendimentos {{ dependent.registrationNumber }}</small>
             </div>
             <strong v-if="dependent.incomeType !== 'none'"
               >{{ formatCurrency(cents(dependent.amount)) }}<small>por mês</small></strong
@@ -765,7 +756,7 @@ async function signOut() {
           </li>
         </ul>
         <p v-else class="empty-state">
-          Nenhum dependente cadastrado. Ao salvar seus dependentes na aba de rendimentos, eles
+          Nenhum dependente cadastrado. Ao informar seus dependentes na aba de rendimentos, eles
           aparecerão aqui.
         </p>
       </section>

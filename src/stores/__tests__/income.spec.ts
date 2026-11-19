@@ -4,13 +4,16 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import {
   buildPayrollRows,
   buildTaxInput,
+  emptyHousehold,
   estimateTax,
   incomeEntryError,
   incomeEntryWarnings,
   inssCeilingWarning,
   payrollEstimate,
   useIncomeStore,
+  type Household,
   type IncomeRegistration,
+  type RegisteredDependent,
   type RegisteredExpense,
   type RegisteredIncomeEntry,
 } from '@/stores/income'
@@ -31,17 +34,22 @@ const fillDraft = (
 }
 
 const withDependents = (store: Store, count: number) => {
-  store.setDraftHasDependents(true)
-  store.setDraftDependentCount(count)
+  store.setHasDependents(true)
+  store.setDependentCount(count)
 }
 
-const registration = (fields: Partial<IncomeRegistration> = {}): IncomeRegistration => ({
+const registration = (fields: Partial<IncomeRegistration>): IncomeRegistration => ({
   id: 1,
   incomes: [],
-  dependents: [],
   ...fields,
 })
 
+const household = (fields: Partial<Household>): Household => ({ ...emptyHousehold(), ...fields })
+
+const noIncomeDependents = (count: number): RegisteredDependent[] =>
+  Array.from({ length: count }, (_, index) => ({ id: index + 1, incomeType: 'none', amount: '' }))
+
+// Alimony paid is an expense on the Dedutíveis screen (RF-13): 800 a month is 9.600,00 a year.
 const expense = (fields: Partial<RegisteredExpense> = {}): RegisteredExpense => ({
   id: 1,
   categoria: 'pensao',
@@ -97,6 +105,63 @@ describe('income store · estimate from the income screen', () => {
     expect(store.summaryTaxEstimate).toEqual(store.taxEstimate)
   })
 
+  it('keeps dependents and alimony for the next registration instead of starting them over', () => {
+    const store = useIncomeStore()
+    fillDraft(store, { salary: 'R$ 6.500,00', inss: 'R$ 711,51', irrf: 'R$ 248,42' })
+    withDependents(store, 2)
+    store.addExpense(expense())
+    store.saveDraft()
+
+    expect(store.hasDependents).toBe(true)
+    expect(store.dependents).toHaveLength(2)
+    expect(store.expenses).toHaveLength(1)
+    expect(store.draftIncomes[0]?.amount).toBe('')
+  })
+
+  it('counts dependents and alimony once with a second job (F1 + 2.000 a month)', () => {
+    const store = useIncomeStore()
+    fillDraft(store, { salary: 'R$ 6.500,00', inss: 'R$ 711,51', irrf: 'R$ 248,42' })
+    withDependents(store, 2)
+    store.addExpense(expense())
+    store.saveDraft()
+    fillDraft(store, { salary: 'R$ 2.000,00', inss: 'R$ 150,00' })
+    store.saveDraft()
+
+    // Before, a second registration kept its own copy: typing them again counted 4 dependents and
+    // 19.200,00 of alimony, and the tax due came out R$ 3.891,29 too low.
+    expect(store.registrations).toHaveLength(2)
+    expect(store.dependentCount).toBe(2)
+    expect(store.taxEstimate).toMatchObject({
+      ok: true,
+      result: { deducaoDependentes: 455_016, totalPensoes: 960_000, resultado: -743_002 },
+    })
+  })
+
+  it('applies a change to dependents or alimony at once, with nothing to save', () => {
+    const store = useIncomeStore()
+    fillDraft(store, { salary: 'R$ 6.500,00', inss: 'R$ 711,51', irrf: 'R$ 248,42' })
+    store.saveDraft()
+    const without = store.taxEstimate
+
+    withDependents(store, 2)
+    store.addExpense(expense())
+
+    expect(store.taxEstimate).not.toEqual(without)
+    expect(store.taxEstimate).toMatchObject({ ok: true, result: { resultado: -38_337 } })
+  })
+
+  it('clears dependents and alimony with the account data', () => {
+    const store = useIncomeStore()
+    withDependents(store, 2)
+    store.addExpense(expense())
+
+    store.clearAccountData()
+
+    expect(store.hasDependents).toBe(false)
+    expect(store.dependents).toEqual([])
+    expect(store.expenses).toEqual([])
+  })
+
   it('RF-08 case F2: 6.000 a month without deductions gives a refund in the simplified model', () => {
     const store = useIncomeStore()
     fillDraft(store, { salary: 'R$ 6.000,00', inss: 'R$ 641,51', irrf: 'R$ 385,10' })
@@ -111,11 +176,13 @@ describe('income store · estimate from the income screen', () => {
     const store = useIncomeStore()
     const income = fillDraft(store, { salary: 'R$ 6.500,00' })
     withDependents(store, 2)
+    store.addExpense(expense())
 
     expect(store.fillDraftIncomeFromSalary(income.id)).toBe('')
 
+    // Alimony is entered once a year in Dedutíveis and is not assumed in the monthly payroll.
     expect(income).toMatchObject({ inss: 'R$ 711,51', irrf: 'R$ 465,65' })
-    expect(store.summaryTaxEstimate).toMatchObject({ ok: true, result: { totalPensoes: 0 } })
+    expect(store.summaryTaxEstimate).toMatchObject({ ok: true, result: { totalPensoes: 960_000 } })
   })
 
   it('does not save a source with more withheld than its income', () => {
@@ -138,105 +205,89 @@ describe('income store · estimate from the income screen', () => {
 })
 
 describe('buildTaxInput', () => {
-  it('annualizes each source without a duplicate monthly alimony entry', () => {
+  it('annualizes each source and takes alimony from the expenses', () => {
     expect(
-      buildTaxInput([
-        registration({
-          incomes: [
-            { id: 1, category: 'clt', amount: 'R$ 3.000,00', inss: 'R$ 253,41', irrf: '' },
-            { id: 2, category: 'alugueis', amount: 'R$ 1.500,00', inss: '', irrf: '' },
-          ],
-        }),
-      ]),
+      buildTaxInput(
+        [
+          registration({
+            incomes: [
+              { id: 1, category: 'clt', amount: 'R$ 3.000,00', inss: 'R$ 253,41', irrf: '' },
+              { id: 2, category: 'alugueis', amount: 'R$ 1.500,00', inss: '', irrf: '' },
+            ],
+          }),
+        ],
+        emptyHousehold(),
+        [expense({ valor_centavos: 600_000 })],
+      ),
     ).toEqual({
       fontes: [
         { rendimentos: 3_600_000, previdencia: 304_092, irrf: 0 },
         { rendimentos: 1_800_000, previdencia: 0, irrf: 0 },
       ],
       dependentes: 0,
-      pensoes: 0,
+      pensoes: 600_000,
       saude: [],
       educacao: [],
     })
   })
 
   it('counts every dependent and adds only their taxable income', () => {
-    const input = buildTaxInput([
-      registration({
+    const input = buildTaxInput(
+      [],
+      household({
         dependents: [
           { id: 1, incomeType: 'none', amount: '' },
           { id: 2, incomeType: 'estagio', amount: 'R$ 1.200,00' },
           { id: 3, incomeType: 'pensao', amount: 'R$ 900,00' }, // received alimony is exempt
         ],
       }),
-    ])
+    )
 
     expect(input.dependentes).toBe(3)
     expect(input.fontes).toEqual([{ rendimentos: 1_440_000, previdencia: 0, irrf: 0 }])
   })
 
-  it('maps saved deductible expenses and excludes dependents in another declaration', () => {
-    const expenses = [
-      expense(),
-      expense({
-        id: 2,
-        categoria: 'saude',
-        tipo: 'consulta_medica',
-        beneficiario: 'titular',
-        valor_centavos: 100_000,
-        base_legal_ok: null,
-      }),
-    ]
+  it('adds up the sources of several registrations, with dependents and alimony once', () => {
     const input = buildTaxInput(
       [
         registration({
-          dependents: [
-            { id: 1, incomeType: 'none', amount: '' },
-            { id: 2, incomeType: 'estagio', amount: 'R$ 1.200,00', emOutraDeclaracao: true },
-          ],
+          id: 1,
+          incomes: [{ id: 1, category: 'clt', amount: 'R$ 1.000,00', inss: '', irrf: '' }],
+        }),
+        registration({
+          id: 2,
+          incomes: [{ id: 2, category: 'clt', amount: 'R$ 2.000,00', inss: '', irrf: '' }],
         }),
       ],
-      expenses,
+      household({ dependents: noIncomeDependents(1) }),
+      [expense({ valor_centavos: 120_000 })],
     )
 
-    expect(input).toMatchObject({
-      dependentes: 1,
-      pensoes: 960_000,
-      saude: [{ valor: 100_000, reembolso: 0, dedutivel: true }],
-    })
-    expect(input.fontes).toEqual([])
-  })
-
-  it('adds up several saved registrations', () => {
-    const input = buildTaxInput([
-      registration({
-        id: 1,
-        incomes: [{ id: 1, category: 'clt', amount: 'R$ 1.000,00', inss: '', irrf: '' }],
-        dependents: [{ id: 1, incomeType: 'none', amount: '' }],
-      }),
-      registration({ id: 2 }),
-    ])
-
-    expect(input).toMatchObject({ dependentes: 1, pensoes: 0 })
-    expect(input.fontes).toHaveLength(1)
+    expect(input).toMatchObject({ dependentes: 1, pensoes: 120_000 })
+    expect(input.fontes).toHaveLength(2)
   })
 })
 
 describe('estimateTax', () => {
   it('has nothing to estimate without income', () => {
-    expect(estimateTax([])).toBeNull()
-    expect(estimateTax([registration()])).toBeNull()
+    expect(estimateTax([], emptyHousehold())).toBeNull()
+    expect(
+      estimateTax([registration({})], household({ dependents: noIncomeDependents(2) }), [
+        expense(),
+      ]),
+    ).toBeNull()
   })
 })
 
-describe('income store · deductible expenses', () => {
+describe('income store · deductible expenses (RF-13)', () => {
+  const withSalary = (store: Store, salary: string) =>
+    store.addRegistration(
+      registration({ incomes: [{ id: 1, category: 'clt', amount: salary, inss: '', irrf: '' }] }),
+    )
+
   it('registers non-deductible expenses, explains why, and leaves the tax estimate unchanged', () => {
     const store = useIncomeStore()
-    store.addRegistration(
-      registration({
-        incomes: [{ id: 1, category: 'clt', amount: 'R$ 6.500,00', inss: '', irrf: '' }],
-      }),
-    )
+    withSalary(store, 'R$ 6.500,00')
     const estimateWithoutExpenses = store.taxEstimate
     store.addExpense(
       expense({
@@ -249,7 +300,6 @@ describe('income store · deductible expenses', () => {
     )
     store.addExpense(
       expense({
-        id: 2,
         categoria: 'educacao',
         tipo: 'curso_idiomas',
         beneficiario: 'titular',
@@ -266,53 +316,52 @@ describe('income store · deductible expenses', () => {
     expect(store.taxEstimate).toEqual(estimateWithoutExpenses)
   })
 
-  it('updates the education bar and removes expenses that would reference a removed dependent', () => {
+  it('updates the education bar and removes the expenses of a removed dependent', () => {
     const store = useIncomeStore()
-    const saved = registration({
-      dependents: [{ id: 12, incomeType: 'none', amount: '', name: 'Ana' }],
-    })
-    store.addRegistration(saved)
+    withDependents(store, 1)
+    const dependentId = String(store.dependents[0]!.id)
     store.addExpense(
       expense({
         categoria: 'educacao',
         tipo: 'graduacao',
         beneficiario: 'dependente',
-        dependente_id: '12',
+        dependente_id: dependentId,
         valor_centavos: 200_000,
         base_legal_ok: null,
       }),
     )
 
     expect(store.deductionEffects.educacaoPorPessoa).toMatchObject([
-      { pessoa: '12', uso: 200_000, restante: 156_150 },
+      { pessoa: dependentId, uso: 200_000, restante: 156_150 },
     ])
 
-    store.updateRegistration({ ...saved, dependents: [] })
+    store.setDependentCount(0)
     expect(store.expenses).toEqual([])
     expect(store.deductionEffects.educacaoPorPessoa).toEqual([])
   })
 
   it('does not count expenses or income for a dependent in another declaration', () => {
     const store = useIncomeStore()
-    store.addRegistration(
-      registration({
-        incomes: [{ id: 1, category: 'clt', amount: 'R$ 5.000,00', inss: '', irrf: '' }],
-        dependents: [
-          { id: 12, incomeType: 'estagio', amount: 'R$ 1.000,00', emOutraDeclaracao: true },
-        ],
-      }),
-    )
+    withSalary(store, 'R$ 5.000,00')
+    withDependents(store, 1)
+    const dependent = store.dependents[0]!
+    Object.assign(dependent, {
+      incomeType: 'estagio',
+      amount: 'R$ 1.000,00',
+      emOutraDeclaracao: true,
+    })
     store.addExpense(
       expense({
         categoria: 'educacao',
         tipo: 'graduacao',
         beneficiario: 'dependente',
-        dependente_id: '12',
+        dependente_id: String(dependent.id),
         valor_centavos: 200_000,
         base_legal_ok: null,
       }),
     )
 
+    expect(store.dependentCount).toBe(0)
     expect(store.taxEstimate).toMatchObject({
       ok: true,
       result: { rendimentos: 6_000_000, deducaoDependentes: 0 },
@@ -321,13 +370,12 @@ describe('income store · deductible expenses', () => {
     expect(store.deductionEffects.despesas[0]?.situacao).toBe('nao_deduz')
   })
 
-  it('clears expenses with the rest of the account data', () => {
+  it('does not deduct alimony without the legal basis confirmed', () => {
     const store = useIncomeStore()
-    store.addExpense(expense())
+    withSalary(store, 'R$ 6.500,00')
+    store.addExpense(expense({ base_legal_ok: false }))
 
-    store.clearAccountData()
-
-    expect(store.expenses).toEqual([])
+    expect(store.taxEstimate).toMatchObject({ ok: true, result: { totalPensoes: 0 } })
   })
 })
 
@@ -345,7 +393,7 @@ describe('INSS and income tax checks against the payslip calculation', () => {
   })
 
   it('estimates INSS and IRRF for a CLT salary without assuming alimony payments', () => {
-    expect(payrollEstimate(clt({}), 2)).toMatchObject({ inss: 71_151 })
+    expect(payrollEstimate(clt({}), 2)).toMatchObject({ inss: 71_151, irrf: 46_565 })
   })
 
   it('has no estimate for other categories or without a salary', () => {
@@ -388,26 +436,25 @@ describe('INSS and income tax checks against the payslip calculation', () => {
   })
 
   it('builds the monthly rows for the card, with the payroll only for CLT', () => {
-    const rows = buildPayrollRows([
-      registration({
-        incomes: [
-          { id: 1, category: 'clt', amount: 'R$ 6.500,00', inss: 'R$ 711,51', irrf: 'R$ 248,42' },
-          { id: 2, category: 'alugueis', amount: 'R$ 1.000,00', inss: '', irrf: '' },
-          { id: 3, category: 'clt', amount: '', inss: '', irrf: '' },
-        ],
-        dependents: [
-          { id: 1, incomeType: 'none', amount: '' },
-          { id: 2, incomeType: 'none', amount: '' },
-        ],
-      }),
-    ])
+    const rows = buildPayrollRows(
+      [
+        registration({
+          incomes: [
+            { id: 1, category: 'clt', amount: 'R$ 6.500,00', inss: 'R$ 711,51', irrf: 'R$ 248,42' },
+            { id: 2, category: 'alugueis', amount: 'R$ 1.000,00', inss: '', irrf: '' },
+            { id: 3, category: 'clt', amount: '', inss: '', irrf: '' },
+          ],
+        }),
+      ],
+      household({ dependents: noIncomeDependents(2) }),
+    )
 
     expect(rows).toHaveLength(2)
     expect(rows[0]).toMatchObject({
       informado: { bruto: 650_000, inss: 71_151, irrf: 24_842 },
       dependentes: 2,
       deducaoDependentes: 37_918,
-      folha: { inss: 71_151 },
+      folha: { inss: 71_151, irrf: 46_565 },
     })
     expect(rows[1]?.folha).toBeNull()
   })

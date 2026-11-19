@@ -18,7 +18,8 @@ defineProps<{
 <style scoped>
 .page-card {
   width: 100%;
-  max-width: 40rem;
+  /* The internal screens set --page-card-max to fill their column (App.vue). */
+  max-width: var(--page-card-max, 40rem);
   padding: 2rem 1.5rem;
   border-radius: 1.75rem;
   text-align: center;

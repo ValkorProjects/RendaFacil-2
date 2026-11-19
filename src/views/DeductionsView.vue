@@ -45,8 +45,12 @@ const formError = ref('')
 const typesForCategory = computed(() =>
   EXPENSE_TYPES.filter(([, type]) => type.categoria === form.categoria),
 )
+// The declaration's dependents, with string ids as the engine and the expenses use them.
+const allDependents = computed(() =>
+  incomeStore.household.dependents.map((dependent) => ({ ...dependent, id: String(dependent.id) })),
+)
 const declaredDependents = computed(() =>
-  incomeStore.dependents.filter((dependent) => !dependent.emOutraDeclaracao),
+  allDependents.value.filter((dependent) => !dependent.emOutraDeclaracao),
 )
 const expensesByCategory = computed(() =>
   CATEGORIES.map((category) => ({
@@ -92,7 +96,7 @@ const educationLabel = (personId: string) => {
 const pensionReceiverWarning = computed(() => {
   const receiver = form.recebedor.trim().toLocaleLowerCase('pt-BR')
   if (!receiver || form.pensaoIniciouEm2026) return ''
-  const dependent = incomeStore.dependents.find(
+  const dependent = allDependents.value.find(
     (item) => item.name?.trim().toLocaleLowerCase('pt-BR') === receiver,
   )
   return dependent
@@ -219,7 +223,7 @@ const effectLabel = (effect: EfeitoDespesa | undefined) => {
 const pensionWarning = (expense: RegisteredExpense) => {
   const receiver = expense.recebedor.trim().toLocaleLowerCase('pt-BR')
   if (!receiver || expense.pensaoIniciouEm2026) return ''
-  const match = incomeStore.dependents.find(
+  const match = allDependents.value.find(
     (dependent) => dependent.name?.trim().toLocaleLowerCase('pt-BR') === receiver,
   )
   return match
