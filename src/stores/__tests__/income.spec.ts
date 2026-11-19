@@ -241,7 +241,6 @@ describe('income store · estimate from the income screen', () => {
     expect(estimate?.ok).toBe(false)
     expect(estimate?.ok === false && estimate.error).toMatch('inteiros seguros')
   })
-
 })
 
 describe('buildTaxInput', () => {
