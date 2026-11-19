@@ -401,6 +401,34 @@ describe('income store · deductible expenses (RF-13)', () => {
     expect(store.deductionEffects.despesas[0]?.situacao).toBe('nao_deduz')
   })
 
+  it('refuses an invalid expense when adding and when editing', () => {
+    const store = useIncomeStore()
+    const health = {
+      categoria: 'saude',
+      tipo: 'consulta_medica',
+      beneficiario: 'titular',
+      base_legal_ok: null,
+    } as const
+    expect(store.addExpense(expense({ ...health, valor_centavos: 0 }))).toBe(false)
+    expect(
+      store.addExpense(expense({ ...health, valor_centavos: 10_000, reembolso_centavos: 10_001 })),
+    ).toBe(false)
+    expect(
+      store.addExpense(expense({ ...health, beneficiario: 'dependente', dependente_id: '999' })),
+    ).toBe(false)
+    expect(store.expenses).toEqual([])
+
+    expect(
+      store.addExpense(expense({ ...health, valor_centavos: 10_000, descricao: '  Consulta  ' })),
+    ).toBe(true)
+    const saved = store.expenses[0]!
+    expect(saved.descricao).toBe('Consulta')
+    expect(store.updateExpense({ ...saved, reembolso_centavos: 20_000 })).toBe(false)
+    expect(store.updateExpense({ ...saved, id: saved.id + 100 })).toBe(false)
+    expect(store.updateExpense({ ...saved, valor_centavos: 12_000 })).toBe(true)
+    expect(store.expenses).toMatchObject([{ id: saved.id, valor_centavos: 12_000 }])
+  })
+
   it('does not deduct alimony without the legal basis confirmed', () => {
     const store = useIncomeStore()
     withSalary(store, 'R$ 6.500,00')
