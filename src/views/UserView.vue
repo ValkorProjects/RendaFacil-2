@@ -738,7 +738,7 @@ async function signOut() {
             <h2 id="profile-dependents-title">
               Meus dependentes <span class="account-badge">{{ dependents.length }}</span>
             </h2>
-            <p>Dependentes cadastrados nesta sessão.</p>
+            <p>Dependentes salvos na sua declaração de 2026.</p>
           </div>
           <RouterLink :to="{ name: 'dependents' }" class="text-button"
             >Gerenciar dependentes</RouterLink

@@ -80,10 +80,10 @@ const closeForm = async () => {
   await nextTick()
   addButton.value?.focus()
 }
-const save = () => {
+const save = async () => {
   if (!canSave.value) return
   const incomes = draft.value.teve_renda_propria && !fillIncomeLater.value ? incomeDrafts.value : []
-  if (!store.saveDependentWithIncomes(draft.value, incomes, editingId.value)) {
+  if (!(await store.saveDependentWithIncomes(draft.value, incomes, editingId.value))) {
     saveError.value =
       'Não foi possível salvar. Confira os valores dos rendimentos e tente novamente.'
     return
@@ -93,7 +93,7 @@ const save = () => {
   void closeForm()
 }
 const remove = async (dependent: RegisteredDependent) => {
-  store.removeDependent(dependent.id)
+  if (!(await store.removeDependent(dependent.id))) return
   confirmingId.value = null
   message.value = `${dependent.apelido} e os lançamentos vinculados foram excluídos.`
   await nextTick()
@@ -267,7 +267,9 @@ const linkedIncomes = (id: number) =>
       <p v-if="saveError" role="alert">{{ saveError }}</p>
       <div class="actions">
         <button class="button secondary" type="button" @click="closeForm">Cancelar</button>
-        <button class="button" type="submit" :disabled="!canSave">Salvar dependente</button>
+        <button class="button" type="submit" :disabled="!canSave || !store.loaded || store.saving">
+          Salvar dependente
+        </button>
       </div>
     </form>
 

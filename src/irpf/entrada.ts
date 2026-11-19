@@ -1,21 +1,14 @@
+import type { Tables } from '@/types/database.types'
 import type { Entrada } from './ajusteAnual'
 import { somar } from './centavos'
 import { tipoDespesa, type CategoriaDespesa } from './despesas'
 
-// Linhas das tabelas do Supabase (RF-02), só com as colunas que o motor usa. Podem ser trocadas
-// pelos tipos gerados em src/types/database.types.ts quando eles existirem.
-
-export interface RegistroFonte {
-  dependente_id: string | null // null = titular
-  rendimentos_centavos: number
-  previdencia_centavos: number
-  irrf_centavos: number
-}
-
-export interface RegistroDependente {
-  id: string
-  em_outra_declaracao: boolean
-}
+// The engine consumes only the relevant columns of the generated schema.
+export type RegistroFonte = Pick<
+  Tables<'fontes_pagadoras'>,
+  'dependente_id' | 'rendimentos_centavos' | 'previdencia_centavos' | 'irrf_centavos'
+>
+export type RegistroDependente = Pick<Tables<'dependentes'>, 'id' | 'em_outra_declaracao'>
 
 export interface RegistroDespesa {
   categoria: CategoriaDespesa

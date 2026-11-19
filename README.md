@@ -53,9 +53,9 @@ Em desenvolvimento, rumo ao MVP. As funcionalidades estão organizadas em issues
 | Pronto                                                                                | Em andamento ou planejado                                    |
 | ------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
 | Motor de cálculo do ajuste anual e da folha mensal, com testes de casos de referência | Questionário inicial com triagem                             |
-| Parâmetros fiscais de 2026                                                            | Persistência das rendas e dos dependentes no Supabase        |
+| Parâmetros fiscais de 2026                                                            |         |
 | Estrutura do banco e políticas RLS definidas em [`supabase/`](supabase/)              | Telas finais de Rendas e Dedutíveis             |
-| Tela de Rendas com estimativa do imposto (dados ainda só em memória)                  | Home com o resultado e o detalhe do cálculo                  |
+| Rendas, dependentes e despesas persistidos no Supabase                  | Home com o resultado e o detalhe do cálculo                  |
 | Cadastro, login, perfil, consentimento e política de privacidade                      | Publicação da Edge Function de exclusão e deploy de produção |
 | Documentação do cálculo                                                               |                                                              |
 | Layout base: saudação, barra inferior (Home, Rendas, Dedutíveis, Menu)                |                                                              |
@@ -234,8 +234,30 @@ As fórmulas, a tabela de parâmetros com as fontes oficiais, as regras de arred
 
 As migrations em [`supabase/migrations/`](supabase/migrations/) definem as tabelas `perfis`,
 `declaracoes`, `fontes_pagadoras`, `dependentes` e `despesas`, com políticas RLS (Row Level Security)
-para restringir o acesso aos dados do usuário autenticado. A tela de Rendas ainda mantém rendimentos
-e dependentes apenas em memória; a persistência deles no Supabase ainda está planejada.
+para restringir o acesso aos dados do usuário autenticado. A camada [`src/data/`](src/data/)
+carrega a declaração de 2026 ao entrar e persiste rendas, dependentes, despesas e pensão paga.
+Os formulários mantêm os campos em caso de falha; a Home calcula sobre as linhas confirmadas no
+banco. Ao sair ou trocar de conta, o cache e os rascunhos são limpos, sem apagar o banco.
+
+Aplique as migrações antes de executar esta versão contra um projeto remoto (CLI v3):
+
+```bash
+npx supabase login
+npx supabase db push --remote=SEU_PROJECT_REF
+```
+
+A migração [`20261119050828_persistencia_rendas.sql`](supabase/migrations/20261119050828_persistencia_rendas.sql)
+adiciona categoria e agrupamento de rendas, pensão mensal da declaração e a RPC
+`salvar_lancamentos`. A RPC usa `SECURITY INVOKER`, respeita RLS e grava apenas as linhas
+alteradas, em uma transação. O app também garante a declaração na primeira gravação com
+`ON CONFLICT DO NOTHING`, atendendo contas anteriores ao trigger de cadastro.
+
+As rendas são gravadas em centavos **anuais**; o formulário mostra a média mensal. Valores anuais
+que não dividem por 12 são preservados exatamente enquanto o campo não muda. Despesas usam
+centavos anuais; até o formulário coletar uma data específica, `data` representa o fechamento do
+ano (`2026-12-31`). A pensão da seção de Rendas usa centavos mensais e é salva pelo botão
+**Salvar pensão** ou junto do próximo lançamento. As relações do formulário são convertidas
+explicitamente para `conjuge` e `pais_avos`, como definido no RF-02.
 
 ### Conectar um projeto
 
@@ -284,15 +306,35 @@ da conta mostra um erro e não informa sucesso.
 
 ### Tipos do banco
 
-Para gerar os tipos do TypeScript a partir do banco:
+Os tipos em [`src/types/database.types.ts`](src/types/database.types.ts) são gerados pela CLI,
+a partir do schema público, e usados no cliente, nas consultas e na entrada do motor. Para
+reproduzir a geração local (Docker em execução):
 
 ```bash
-npx supabase login
+npx supabase db start
+npm run db:types
 ```
 
+Depois de novas migrações, aplique-as ao banco local com `npx supabase db push` antes de gerar.
+Para gerar a partir de um projeto remoto autenticado:
+
 ```bash
-npx supabase gen types typescript --project-id seu-project-ref > src/types/database.types.ts
+npm run db:types -- --remote=SEU_PROJECT_REF
 ```
+
+O script só substitui o arquivo após a geração terminar com sucesso. Não edite os tipos à mão.
+
+### Testes de persistência
+
+`npm test` cobre a camada de dados com cliente Supabase simulado, recarga, troca de conta,
+erros de rede, edições, exclusões e preservação de centavos. Para verificar as políticas RLS e
+rollback transacional no Postgres local, após `npx supabase db start`:
+
+```bash
+docker exec -i supabase_db_RendaFacil-2 psql -U postgres -d postgres -v ON_ERROR_STOP=1 < supabase/tests/persistencia.sql
+```
+
+As contas temporárias do teste são revertidas ao final da transação.
 
 ### Funcionamento offline
 

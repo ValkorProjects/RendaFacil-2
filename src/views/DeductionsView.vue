@@ -27,10 +27,10 @@ const canSave = computed(
     cents(amount.value) > 0 &&
     (!health.value || cents(refund.value) <= cents(amount.value)),
 )
-const save = () => {
+const save = async () => {
   if (!canSave.value) return
   if (
-    !store.addExpense({
+    !(await store.addExpense({
       descricao: description.value,
       categoria: TIPOS_DESPESA[type.value].categoria,
       tipo: type.value,
@@ -39,7 +39,7 @@ const save = () => {
       valor_centavos: cents(amount.value),
       reembolso_centavos: health.value ? cents(refund.value) : 0,
       base_legal_ok: null,
-    })
+    }))
   )
     return
   description.value = ''
@@ -111,7 +111,9 @@ const deductible = (expense: RegisteredExpense) =>
           O reembolso não pode superar o valor pago.
         </p>
       </template>
-      <button class="button" type="submit" :disabled="!canSave">Adicionar despesa</button>
+      <button class="button" type="submit" :disabled="!canSave || !store.loaded || store.saving">
+        Adicionar despesa
+      </button>
     </form>
     <p v-if="message" role="status">{{ message }}</p>
     <EmptyState

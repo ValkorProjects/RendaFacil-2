@@ -85,18 +85,18 @@ const setEditingOwner = (index: number, event: Event) => {
   if (income) income.dependentId = value === '' ? null : Number(value)
 }
 
-const saveInlineEdit = () => {
+const saveInlineEdit = async () => {
   if (editingRegistrationId.value === null || !canSaveInlineEdit.value) return
 
-  incomeStore.updateRegistration({
+  const saved = await incomeStore.updateRegistration({
     id: editingRegistrationId.value,
     incomes: editingIncomes.value.filter((income) => cents(income.amount) > 0),
   })
-  cancelInlineEdit()
+  if (saved) cancelInlineEdit()
 }
 
-const saveIncomeAndReturn = () => {
-  if (incomeStore.saveDraft()) router.push({ name: 'home' })
+const saveIncomeAndReturn = async () => {
+  if (await incomeStore.saveDraft()) router.push({ name: 'home' })
 }
 </script>
 
@@ -137,7 +137,7 @@ const saveIncomeAndReturn = () => {
                   <button
                     class="edit-button"
                     type="button"
-                    :disabled="!canSaveInlineEdit"
+                    :disabled="!canSaveInlineEdit || !incomeStore.loaded || incomeStore.saving"
                     @click="saveInlineEdit"
                   >
                     Salvar
@@ -455,6 +455,14 @@ const saveIncomeAndReturn = () => {
           v-model="incomeStore.alimonyPaid"
           v-bind="moneyConfig"
         />
+        <button
+          class="button"
+          type="button"
+          :disabled="!incomeStore.loaded || incomeStore.saving"
+          @click="incomeStore.saveAlimony"
+        >
+          Salvar pensão
+        </button>
       </section>
 
       <footer class="summary-card" aria-labelledby="summary-title">
@@ -496,10 +504,10 @@ const saveIncomeAndReturn = () => {
       <button
         class="button add-registration-button"
         type="button"
-        :disabled="!incomeStore.canSaveDraft"
+        :disabled="!incomeStore.canSaveDraft || !incomeStore.loaded || incomeStore.saving"
         @click="saveIncomeAndReturn"
       >
-        Adicionar
+        {{ incomeStore.saving ? 'Salvando…' : 'Adicionar' }}
       </button>
     </PageCard>
   </div>

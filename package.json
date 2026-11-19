@@ -9,6 +9,7 @@
     "preview": "vite preview --open",
     "test": "vitest run && node --test tests/*.test.mjs",
     "test:watch": "vitest",
+    "db:types": "node scripts/generate-database-types.mjs",
     "type-check": "vue-tsc --build",
     "lint": "eslint . --fix --cache",
     "format": "prettier --write src/",

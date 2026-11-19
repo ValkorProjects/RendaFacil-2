@@ -1,4 +1,4 @@
-import { computed, onScopeDispose, ref, shallowRef } from 'vue'
+import { computed, onScopeDispose, ref, shallowRef, watch } from 'vue'
 import { defineStore } from 'pinia'
 import type { Session } from '@supabase/supabase-js'
 import { getSupabase, isSupabaseConfigured } from '@/lib/supabase'
@@ -42,7 +42,9 @@ export const useAuthStore = defineStore('auth', () => {
   if (isSupabaseConfigured) {
     try {
       const client = getSupabase()
+      let receivedAuthEvent = false
       const { data } = client.auth.onAuthStateChange((event, newSession) => {
+        receivedAuthEvent = true
         if (session.value?.user.id && session.value.user.id !== newSession?.user.id) {
           income.clearAccountData()
         }
@@ -55,7 +57,7 @@ export const useAuthStore = defineStore('auth', () => {
         .getSession()
         .then(({ data: sessionData, error }) => {
           if (error) throw error
-          if (!session.value) session.value = sessionData.session
+          if (!receivedAuthEvent) session.value = sessionData.session
           ready.value = true
         })
         .catch((error: unknown) => {
@@ -68,6 +70,16 @@ export const useAuthStore = defineStore('auth', () => {
       ready.value = true
     }
   }
+
+  // Supabase callbacks must stay synchronous: schedule data reads outside the auth lock.
+  watch(
+    () => (isGuest.value ? null : user.value?.id),
+    (id) => {
+      if (id) void income.loadAccount(id)
+      else income.clearAccountData()
+    },
+    { immediate: true },
+  )
 
   async function signIn(email: string, password: string) {
     const { error } = await getSupabase().auth.signInWithPassword({ email: email.trim(), password })

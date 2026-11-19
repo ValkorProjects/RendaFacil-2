@@ -31,6 +31,8 @@ let fixtureUser = {
   created_at: '2026-01-01T00:00:00Z',
 }
 globalThis.window = { location: { origin: 'http://localhost:5173' } }
+let persistedDeclaration = null
+const persisted = { fontes_pagadoras: [], dependentes: [], despesas: [] }
 globalThis.fetch = async (input, options = {}) => {
   const url = new URL(typeof input === 'string' ? input : input.url)
   assert.equal(
@@ -39,6 +41,44 @@ globalThis.fetch = async (input, options = {}) => {
     'Tests must never contact a real account',
   )
   const body = options.body ? JSON.parse(options.body) : null
+  if (url.pathname.startsWith('/rest/v1/')) {
+    if (url.pathname.endsWith('/declaracoes') && options.method === 'POST') {
+      persistedDeclaration ??= {
+        id: '00000000-0000-4000-8000-000000000010',
+        ...body,
+        pensao_mensal_centavos: 0,
+      }
+      return new Response(null, { status: 201 })
+    }
+    if (url.pathname.endsWith('/salvar_lancamentos')) {
+      const patch = body.p_alteracoes
+      for (const [table, key] of [
+        ['fontes_pagadoras', 'fontes'],
+        ['dependentes', 'dependentes'],
+        ['despesas', 'despesas'],
+      ]) {
+        for (const row of patch[key]) {
+          const index = persisted[table].findIndex((item) => item.id === row.id)
+          if (index < 0) persisted[table].push(row)
+          else persisted[table][index] = row
+        }
+        persisted[table] = persisted[table].filter(
+          (row) => !patch['excluir_' + key].includes(row.id),
+        )
+      }
+      if ('pensao_mensal_centavos' in patch)
+        persistedDeclaration.pensao_mensal_centavos = patch.pensao_mensal_centavos
+      return new Response(null, { status: 204 })
+    }
+    const row = persistedDeclaration && {
+      ...persistedDeclaration,
+      ...(url.searchParams.get('select').includes('fontes_pagadoras') ? persisted : {}),
+    }
+    const headers = new Headers(options.headers)
+    return Response.json(
+      headers.get('Accept')?.includes('vnd.pgrst.object') ? row : row ? [row] : [],
+    )
+  }
   requests.push({ path: url.pathname, body })
   if (url.pathname.endsWith('/token')) {
     if (body.password === 'incorrect-password') {
@@ -84,6 +124,13 @@ setActivePinia(pinia)
 const auth = useAuthStore()
 const { useIncomeStore } = await server.ssrLoadModule('/src/stores/income.ts')
 const income = useIncomeStore()
+async function waitForIncome() {
+  for (let attempt = 0; attempt < 100 && !income.loaded; attempt++) {
+    assert.equal(income.loadError, '', 'The account data must load successfully')
+    await new Promise((resolve) => setTimeout(resolve, 5))
+  }
+  assert.equal(income.loaded, true, 'Timed out waiting for account data')
+}
 
 after(async () => {
   auth.$dispose()
@@ -191,14 +238,15 @@ test('password changes reject invalid inputs and incorrect current passwords bef
 })
 
 test('dependents without income survive saving and account data is cleared on sign-out', async () => {
+  await waitForIncome()
   income.draftIncomes[0].amount = '100000'
-  income.saveDependent({
+  await income.saveDependent({
     apelido: 'Lia',
     relacao: 'filho_enteado',
     em_outra_declaracao: false,
     teve_renda_propria: false,
   })
-  income.saveDependent({
+  await income.saveDependent({
     apelido: 'Teo',
     relacao: 'filho_enteado',
     em_outra_declaracao: false,
@@ -206,7 +254,7 @@ test('dependents without income survive saving and account data is cleared on si
   })
   income.addDraftIncome()
   Object.assign(income.draftIncomes[1], { amount: '50000', dependentId: income.dependents[1].id })
-  assert.equal(income.saveDraft(), true)
+  assert.equal(await income.saveDraft(), true)
   assert.equal(income.dependentCount, 2)
   assert.equal(income.dependents[0].teve_renda_propria, false)
   assert.equal(income.taxableTotal, 1800000)
@@ -222,12 +270,14 @@ test('dependents without income survive saving and account data is cleared on si
 test('deletion failure preserves the account and data; confirmed deletion signs out and clears them', async () => {
   await assert.rejects(auth.deleteAccount())
   await auth.signIn('ana@example.com', 'new-password')
+  await waitForIncome()
+  const previousCount = income.registrations.length
   income.draftIncomes[0].amount = '100000'
-  income.saveDraft()
+  await income.saveDraft()
   failDelete = true
   await assert.rejects(auth.deleteAccount())
   assert.equal(auth.isGuest, false)
-  assert.equal(income.registrations.length, 1)
+  assert.equal(income.registrations.length, previousCount + 1)
   failDelete = false
   await auth.deleteAccount()
   assert.equal(auth.isGuest, true)
