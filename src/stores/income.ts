@@ -11,7 +11,6 @@ import type { Tables } from '@/types/database.types'
 import { defineStore } from 'pinia'
 import {
   calcularAjusteAnual,
-  calcularEfeitos,
   calcularFolhaMensal,
   dependentePodeSerDeclarado,
   montarEntrada,
@@ -34,15 +33,12 @@ export type IncomeCategory =
 
 // RF-13: an expense typed on the Despesas screen. The engine decides whether it deducts.
 export interface RegisteredExpense extends RegistroDespesa {
-  id: number
-  // Payment date in 2026 (YYYY-MM-DD).
-  data: string
+  id: string
   // Optional; never a diagnosis.
   descricao: string
   // Alimony only: who received it, and whether it started in 2026 (the one year the receiver may
   // also be a dependent).
   recebedor: string
-  pensaoIniciouEm2026: boolean
 }
 
 export interface RegisteredIncomeEntry {

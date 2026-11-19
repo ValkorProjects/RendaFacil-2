@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
 import { Money3Component } from 'v-money3'
 import { RouterLink } from 'vue-router'
+import EmptyState from '@/components/EmptyState.vue'
+import PageCard from '@/components/PageCard.vue'
 import ConfirmDelete from '@/components/ConfirmDelete.vue'
 import TaxEstimateCard from '@/components/TaxEstimateCard.vue'
 import { TIPOS_DESPESA, avaliarDespesa, type IdTipoDespesa } from '@/irpf'
@@ -50,94 +52,6 @@ const save = async () => {
       base_legal_ok: pension.value ? legalBasis.value : null,
     }))
   )
-  return dependent
-    ? 'O recebedor está cadastrado como dependente. Confira com atenção a situação no ano em que a pensão começou.'
-    : ''
-})
-
-watch(
-  () => form.categoria,
-  () => {
-    const firstType = typesForCategory.value[0]
-    if (firstType) form.tipo = firstType[0]
-    form.beneficiario = 'titular'
-    form.dependente_id = null
-    form.reembolso_centavos = 0
-    reembolsoInput.value = ''
-    form.base_legal_ok = false
-  },
-  { flush: 'sync' },
-)
-watch(
-  () => form.beneficiario,
-  (beneficiary) => {
-    form.dependente_id =
-      beneficiary === 'dependente' ? (declaredDependents.value[0]?.id ?? null) : null
-  },
-  { flush: 'sync' },
-)
-watch(
-  () => form.tipo,
-  (type) => {
-    if (type !== 'pensao_alimenticia') form.base_legal_ok = null
-  },
-)
-
-const resetForm = () => {
-  Object.assign(form, blankExpense())
-  valorInput.value = ''
-  reembolsoInput.value = ''
-  editingId.value = null
-  step.value = 1
-  formError.value = ''
-}
-
-const validate = () => {
-  const paymentDate = new Date(`${form.data}T00:00:00Z`)
-  if (
-    !form.data ||
-    !form.data.startsWith('2026-') ||
-    paymentDate.getUTCFullYear() !== 2026 ||
-    paymentDate.toISOString().slice(0, 10) !== form.data
-  ) {
-    return 'Informe uma data de 2026.'
-  }
-  if (cents(valorInput.value) <= 0) return 'Informe um valor maior que zero.'
-  if (
-    asksRefund.value &&
-    (cents(reembolsoInput.value) < 0 || cents(reembolsoInput.value) > cents(valorInput.value))
-  ) {
-    return 'O reembolso deve ficar entre zero e o valor da despesa.'
-  }
-  if (form.beneficiario === 'dependente' && !form.dependente_id) {
-    return 'Cadastre primeiro um dependente nesta declaração.'
-  }
-  if (form.categoria === 'pensao' && !form.recebedor.trim()) {
-    return 'Informe quem recebeu a pensão.'
-  }
-  if (form.descricao.length > 120) return 'A descrição deve ter no máximo 120 caracteres.'
-  return ''
-}
-
-const saveExpense = () => {
-  formError.value = validate()
-  if (formError.value) return
-
-  const expense: Omit<RegisteredExpense, 'id'> = {
-    ...form,
-    valor_centavos: cents(valorInput.value),
-    reembolso_centavos: asksRefund.value ? cents(reembolsoInput.value) : 0,
-    base_legal_ok: form.categoria === 'pensao' ? form.base_legal_ok : null,
-    recebedor: form.categoria === 'pensao' ? form.recebedor.trim() : '',
-    pensaoIniciouEm2026: form.categoria === 'pensao' && form.pensaoIniciouEm2026,
-    descricao: form.descricao.trim(),
-  }
-  const saved =
-    editingId.value === null
-      ? incomeStore.addExpense(expense)
-      : incomeStore.updateExpense({ ...expense, id: editingId.value })
-  if (!saved) {
-    formError.value = 'Não foi possível salvar. Confira os dados da despesa.'
     return
   description.value = ''
   amount.value = ''

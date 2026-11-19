@@ -1,9 +1,7 @@
 import { databaseMock, USER_A } from '@/data/__tests__/supabaseMock'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
-import { calcularFolhaMensal } from '@/irpf'
-import { buildTaxInput, fillIncomeFromSalary, useIncomeStore } from '@/stores/income'
-import { formatMoneyInput } from '@/utils/currency'
+import { buildTaxInput, useIncomeStore } from '@/stores/income'
 import { emptyDependent, type DependentFields } from '@/utils/dependents'
 
 vi.mock('@/lib/supabase', () => ({ getSupabase: () => databaseMock.client }))
