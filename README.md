@@ -185,7 +185,8 @@ npm run build
 ├── supabase/
 │   ├── config.toml            Configuração do Supabase local
 │   ├── functions/             Edge Function delete-account (exclusão de conta)
-│   └── migrations/            Tabelas e políticas de acesso (RLS) do banco
+│   ├── migrations/            Tabelas e políticas de acesso (RLS) do banco
+│   └── tests/database/        Testes de RLS e privilégios (pgTAP)
 ├── tests/                     Testes Node de perfil e exclusão de conta
 ├── .env.example               Modelo das variáveis de ambiente
 ├── vite.config.ts             Configuração do Vite e do PWA
@@ -277,6 +278,43 @@ npx supabase login
 ```bash
 npx supabase gen types typescript --project-id seu-project-ref > src/types/database.types.ts
 ```
+
+### Testes do banco (RLS)
+
+O app fala com o Supabase direto do navegador, com a chave pública. A única barreira entre um usuário e os dados de outro são as políticas de RLS e os privilégios definidos nas migrations. Se uma migration apagar uma política ou liberar um privilégio, nada no app quebra, e a falha fica aberta. Os testes em [`supabase/tests/database/`](supabase/tests/database/) conferem isso automaticamente, com [pgTAP](https://pgtap.org/), num banco criado do zero pelas migrations:
+
+- um usuário não lê, não altera, não apaga e não cria dados de outro, nem dentro da declaração de outro;
+- `anon` não tem nenhum privilégio, e `authenticated` tem só `SELECT`, `INSERT`, `UPDATE` e `DELETE` (em `perfis`, só `SELECT`: o registro do aceite não pode ser alterado);
+- toda tabela de `public` tem RLS ligada, nenhuma view ignora a RLS e nenhuma função `security definer` pode ser chamada por `anon` ou `authenticated`;
+- o cadastro cria o perfil e a declaração de 2026, é recusado sem o aceite da política de privacidade, e o usuário não altera nem apaga o registro do aceite;
+- apagar o usuário em `auth.users` apaga todas as linhas dele;
+- dinheiro fica só em `bigint`, e não há colunas de CPF, data de nascimento ou diagnóstico.
+
+Para rodar localmente, é preciso ter o [Docker](https://docs.docker.com/get-started/get-docker/) instalado e aberto. Suba o Postgres local (a primeira vez baixa as imagens e demora alguns minutos):
+
+```bash
+npx supabase db start
+```
+
+```bash
+npx supabase test db
+```
+
+Depois de mudar uma migration, recrie o banco antes de testar de novo:
+
+```bash
+npx supabase db reset
+```
+
+Para desligar os containers ao terminar:
+
+```bash
+npx supabase stop
+```
+
+No CI, o job `database` roda esses testes nos pull requests que mudam algo em `supabase/`, no `.github/workflows/ci.yml`, no `package.json` ou no `package-lock.json` (que fixam a versão da CLI do Supabase).
+
+Uma tabela nova em `public` precisa de RLS ligada, de políticas e de `revoke` dos privilégios que o Supabase concede por padrão a `anon` e `authenticated`. Sem isso, os testes falham.
 
 ### Funcionamento offline
 
