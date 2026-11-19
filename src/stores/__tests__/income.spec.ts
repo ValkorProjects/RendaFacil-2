@@ -657,4 +657,21 @@ describe('INSS ceiling warning (RF-12)', () => {
 
     expect(store.summaryInssWarning).not.toBe('')
   })
+
+  it('checks the ceiling for each person, not for the household', () => {
+    const store = useIncomeStore()
+    store.saveDependent({ ...emptyDependent(), apelido: 'Lia', teve_renda_propria: true })
+    const lia = store.dependents[0]!
+    store.addRegistration(
+      registration({
+        incomes: [source(1, 'R$ 8.538,12'), { ...source(2, 'R$ 8.538,12'), dependentId: lia.id }],
+      }),
+    )
+    // 17.076,24 for the household, but each person stays under 11.857,08.
+    expect(store.summaryInssWarning).toBe('')
+
+    store.addRegistration(registration({ id: 2, incomes: [source(3, 'R$ 3.960,00')] }))
+    expect(store.summaryInssWarning).toMatch(/^Titular: /)
+    expect(store.summaryInssWarning).not.toContain('Lia:')
+  })
 })
