@@ -31,7 +31,7 @@ const confirmingDeleteId = ref<number | null>(null)
 const editingIncomes = ref<RegisteredIncomeEntry[]>([])
 const salaryErrors = ref<Record<number, string>>({})
 
-// The payslip checks use the declaration's dependents and alimony, whichever source it is.
+// The payslip checks use the declaration's dependents for the holder's sources.
 const incomeWarnings = (income: RegisteredIncomeEntry | undefined) =>
   income
     ? incomeEntryWarnings(
@@ -380,8 +380,8 @@ const saveIncomeAndReturn = async () => {
                 Calcular INSS e IR pelo salário
               </button>
               <p class="field-help">
-                Supõe o mesmo salário todos os meses e usa os dependentes e a pensão informados
-                abaixo.
+                Supõe o mesmo salário todos os meses e considera os dependentes. A pensão paga é
+                lançada em Despesas e entra no ajuste da declaração, não nesta simulação mensal.
               </p>
             </template>
             <p v-if="salaryErrors[income.id]" class="field-error" role="alert">

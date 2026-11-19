@@ -39,7 +39,7 @@ Quando o MVP estiver completo, o fluxo terá quatro etapas. Elas descrevem o pro
 
 1. **Questionário inicial:** coleta o básico (quantas empresas pagaram salário, dependentes, pensão, gastos com saúde e educação) e identifica situações que o app ainda não calcula, como aluguel recebido ou renda de autônomo.
 2. **Rendas:** a pessoa lança o informe de rendimentos de cada empresa ou, antes de ele chegar, estima pelo salário mensal.
-3. **Dependentes e dedutíveis:** cadastro de dependentes e de despesas de saúde, educação e pensão alimentícia, avisando quando uma despesa não deduz e por quê.
+3. **Dependentes e despesas:** cadastro de dependentes e de despesas de saúde, educação e pensão alimentícia, avisando quando uma despesa não deduz e por quê.
 4. **Resultado:** a tela principal mostra um único valor (restituição ou imposto a pagar), o modelo recomendado e o cálculo detalhado nos dois modelos.
 
 O cálculo segue as tabelas oficiais de 2026, incluindo a redução da Lei 15.270/2025, e está documentado com fórmulas e fontes em [`docs/calculo-irpf-2026.md`](docs/calculo-irpf-2026.md).
@@ -201,7 +201,8 @@ npm run build
 ├── supabase/
 │   ├── config.toml            Configuração do Supabase local
 │   ├── functions/             Edge Function delete-account (exclusão de conta)
-│   └── migrations/            Tabelas e políticas de acesso (RLS) do banco
+│   ├── migrations/            Tabelas e políticas de acesso (RLS) do banco
+│   └── tests/database/        Testes de RLS e privilégios (pgTAP)
 ├── tests/                     Testes Node de perfil e exclusão de conta
 ├── .env.example               Modelo das variáveis de ambiente
 ├── vite.config.ts             Configuração do Vite e do PWA

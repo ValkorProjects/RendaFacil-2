@@ -11,10 +11,12 @@ import type { Tables } from '@/types/database.types'
 import { defineStore } from 'pinia'
 import {
   calcularAjusteAnual,
+  calcularEfeitos,
   calcularFolhaMensal,
   dependentePodeSerDeclarado,
   montarEntrada,
   parametros,
+  type DadosDeclaracao,
   type Entrada,
   type RegistroDespesa,
   type Resultado,
@@ -30,9 +32,17 @@ const annualize = (amountInCents: number) => amountInCents * MONTHS_PER_YEAR
 export type IncomeCategory =
   'clt' | 'proLabore' | 'autonomo' | 'aposentadoria' | 'alugueis' | 'pensaoAlimenticia'
 
+// RF-13: an expense typed on the Despesas screen. The engine decides whether it deducts.
 export interface RegisteredExpense extends RegistroDespesa {
-  id: string
+  id: number
+  // Payment date in 2026 (YYYY-MM-DD).
+  data: string
+  // Optional; never a diagnosis.
   descricao: string
+  // Alimony only: who received it, and whether it started in 2026 (the one year the receiver may
+  // also be a dependent).
+  recebedor: string
+  pensaoIniciouEm2026: boolean
 }
 
 export interface RegisteredIncomeEntry {
@@ -113,6 +123,25 @@ export const payrollEstimate = (
   }
 }
 
+// Fills INSS and the tax withheld from the monthly payroll calculation, assuming a CLT salary
+// that is the same every month. Alimony paid is not assumed: it is an expense of the annual
+// adjustment (RF-13), and not every payslip deducts it. Returns an error message when the engine
+// can't calculate it.
+export const fillIncomeFromSalary = (income: RegisteredIncomeEntry, dependents: number) => {
+  try {
+    const payroll = calcularFolhaMensal({
+      bruto: cents(income.amount),
+      dependentes: dependents,
+      pensao: 0,
+    })
+    income.inss = formatMoneyInput(payroll.inss)
+    income.irrf = formatMoneyInput(payroll.irrf)
+    return ''
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error)
+  }
+}
+
 // Warnings (never blocking) when the typed INSS or income tax doesn't match the payslip
 // calculation. The informe de rendimentos is what counts, and it can differ for real reasons:
 // férias, a second employer sharing the INSS ceiling, extra deductions.
@@ -131,7 +160,7 @@ export const incomeEntryWarnings = (
   }
   if (entry.irrf.trim() && Math.abs(cents(entry.irrf) - folha.irrf) > PAYROLL_TOLERANCE) {
     warnings.push(
-      `O IR retido informado (${formatCurrency(cents(entry.irrf))}) difere do estimado pela tabela da folha (${formatCurrency(folha.irrf)}). Férias, 13º ou deduções extras podem explicar a diferença; confira o holerite.`,
+      `O IR retido informado (${formatCurrency(cents(entry.irrf))}) difere do estimado pela tabela da folha (${formatCurrency(folha.irrf)}). Pensão descontada em folha, férias, 13º ou outras deduções podem explicar a diferença; confira o holerite.`,
     )
   }
   return warnings
@@ -160,7 +189,6 @@ export interface PayrollRow {
   informado: { bruto: number; inss: number; irrf: number }
   dependentes: number
   deducaoDependentes: number
-  pensao: number
   folha: ResultadoMensal | null
 }
 
@@ -242,7 +270,31 @@ export const pendingDependentStatements = (
       ),
   )
 
+// The declaration in the engine's model: the included incomes, the dependents and the expenses.
 // The expense engine applies eligibility and the education ceiling separately for each person.
+export const buildDeclarationData = (
+  registrations: readonly IncomeRegistration[],
+  household: Household,
+): DadosDeclaracao => ({
+  fontes: registrations.flatMap((registration) =>
+    registration.incomes
+      .filter(
+        (income) => isIncludedIncome(income, household) && income.category !== 'pensaoAlimenticia',
+      )
+      .map((income) => ({
+        dependente_id: income.dependentId == null ? null : String(income.dependentId),
+        rendimentos_centavos: annualize(cents(income.amount)),
+        previdencia_centavos: annualize(cents(income.inss)),
+        irrf_centavos: annualize(cents(income.irrf)),
+      })),
+  ),
+  dependentes: household.dependents.map((dependent) => ({
+    id: String(dependent.id),
+    em_outra_declaracao: dependent.em_outra_declaracao,
+  })),
+  despesas: household.expenses ?? [],
+})
+
 export const buildTaxInput = (
   registrations: readonly IncomeRegistration[],
   household: Household,
@@ -359,8 +411,7 @@ export const useIncomeStore = defineStore('income', () => {
     draftIncomes.value.push(newIncomeEntry(nextDraftId++))
   }
 
-  // Fills INSS and the tax withheld from the monthly payroll calculation, assuming a CLT salary
-  // that is the same every month. Returns an error message when the engine can't calculate it.
+  // The holder's sources use the declaration's dependents; a dependent's own income has none.
   const fillDraftIncomeFromSalary = (id: number) => {
     const income = draftIncomes.value.find((item) => item.id === id)
     if (!income) return ''

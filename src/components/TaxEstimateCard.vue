@@ -55,7 +55,8 @@ const otherModel = computed(() =>
       </h2>
       <p class="line">
         Supõe o mesmo salário em todos os meses. Na declaração vale o informe de rendimentos; aqui
-        dá para conferir os números do holerite, com valores menores.
+        dá para conferir os números do holerite, com valores menores. A pensão cadastrada em
+        Despesas entra na estimativa anual, não nesta simulação da folha.
       </p>
       <section
         v-for="row in payroll"
@@ -99,11 +100,6 @@ const otherModel = computed(() =>
                 <tr class="deduction">
                   <th scope="row">Dependentes ({{ row.dependentes }})</th>
                   <td>{{ formatCurrency(row.deducaoDependentes) }}</td>
-                  <td>—</td>
-                </tr>
-                <tr class="deduction">
-                  <th scope="row">Pensão alimentícia</th>
-                  <td>{{ formatCurrency(row.pensao) }}</td>
                   <td>—</td>
                 </tr>
                 <tr>

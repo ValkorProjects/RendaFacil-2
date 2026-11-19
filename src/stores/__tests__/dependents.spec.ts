@@ -1,7 +1,9 @@
 import { databaseMock, USER_A } from '@/data/__tests__/supabaseMock'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
-import { buildTaxInput, useIncomeStore } from '@/stores/income'
+import { calcularFolhaMensal } from '@/irpf'
+import { buildTaxInput, fillIncomeFromSalary, useIncomeStore } from '@/stores/income'
+import { formatMoneyInput } from '@/utils/currency'
 import { emptyDependent, type DependentFields } from '@/utils/dependents'
 
 vi.mock('@/lib/supabase', () => ({ getSupabase: () => databaseMock.client }))
@@ -272,7 +274,6 @@ describe('RF-11 · cadastro e cálculo de dependentes', () => {
     expect(store.summaryPayroll.at(-1)).toMatchObject({
       dependentes: 0,
       deducaoDependentes: 0,
-      pensao: 0,
     })
   })
 

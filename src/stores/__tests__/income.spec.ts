@@ -198,9 +198,9 @@ describe('income store · estimate from the income screen', () => {
 
     expect(store.fillDraftIncomeFromSalary(income.id)).toBe('')
 
-    expect(income).toMatchObject({ inss: 'R$ 711,51', irrf: 'R$ 248,42' })
-    // The payroll estimate and the annual adjustment agree with docs/calculo-irpf-2026.md.
-    expect(store.summaryTaxEstimate).toMatchObject({ ok: true, result: { resultado: -38_337 } })
+    // Alimony is entered once a year in Despesas and is not assumed in the monthly payroll.
+    expect(income).toMatchObject({ inss: 'R$ 711,51', irrf: 'R$ 465,65' })
+    expect(store.summaryTaxEstimate).toMatchObject({ ok: true, result: { totalPensoes: 960_000 } })
   })
 
   it('does not count a pension recipient as a dependent when the pension predates 2026', async () => {
@@ -241,6 +241,16 @@ describe('income store · estimate from the income screen', () => {
     const estimate = store.summaryTaxEstimate
     expect(estimate?.ok).toBe(false)
     expect(estimate?.ok === false && estimate.error).toMatch('inteiros seguros')
+  })
+
+  it('has no expense effects, instead of throwing, when the engine refuses the saved values', () => {
+    const store = useIncomeStore()
+    fillDraft(store, { salary: 'R$ 99.999.999.999,99' })
+    expect(store.saveDraft()).toBe(true)
+
+    expect(() => store.deductionEffects).not.toThrow()
+    expect(store.deductionEffects).toBeNull()
+    expect(store.taxEstimate?.ok).toBe(false)
   })
 })
 
@@ -340,6 +350,144 @@ describe('estimateTax', () => {
   })
 })
 
+describe('income store · deductible expenses (RF-13)', () => {
+  const withSalary = (store: Store, salary: string) =>
+    store.addRegistration(
+      registration({ incomes: [{ id: 1, category: 'clt', amount: salary, inss: '', irrf: '' }] }),
+    )
+
+  it('registers non-deductible expenses, explains why, and leaves the tax estimate unchanged', () => {
+    const store = useIncomeStore()
+    withSalary(store, 'R$ 6.500,00')
+    const estimateWithoutExpenses = store.taxEstimate
+    store.addExpense(
+      expense({
+        categoria: 'saude',
+        tipo: 'remedio_farmacia',
+        beneficiario: 'titular',
+        valor_centavos: 50_000,
+        base_legal_ok: null,
+      }),
+    )
+    store.addExpense(
+      expense({
+        categoria: 'educacao',
+        tipo: 'curso_idiomas',
+        beneficiario: 'titular',
+        valor_centavos: 100_000,
+        base_legal_ok: null,
+      }),
+    )
+
+    expect(store.expenses).toHaveLength(2)
+    expect(store.deductionEffects?.despesas.map((item) => item.mensagens[0])).toEqual([
+      'Não deduz: remédio de farmácia (fora da conta do hospital)',
+      'Não deduz: curso de idiomas',
+    ])
+    expect(store.taxEstimate).toEqual(estimateWithoutExpenses)
+  })
+
+  it('updates the education bar and removes the expenses of a removed dependent', () => {
+    const store = useIncomeStore()
+    withDependents(store, 1)
+    const dependentId = String(store.dependents[0]!.id)
+    store.addExpense(
+      expense({
+        categoria: 'educacao',
+        tipo: 'graduacao',
+        beneficiario: 'dependente',
+        dependente_id: dependentId,
+        valor_centavos: 200_000,
+        base_legal_ok: null,
+      }),
+    )
+
+    expect(store.deductionEffects?.educacaoPorPessoa).toMatchObject([
+      { pessoa: dependentId, uso: 200_000, restante: 156_150 },
+    ])
+
+    store.removeDependent(store.dependents[0]!.id)
+    expect(store.expenses).toEqual([])
+    expect(store.deductionEffects?.educacaoPorPessoa).toEqual([])
+  })
+
+  it('does not count expenses or income for a dependent in another declaration', () => {
+    const store = useIncomeStore()
+    withSalary(store, 'R$ 5.000,00')
+    store.saveDependent({ ...emptyDependent(), apelido: 'Duda', em_outra_declaracao: true })
+    const dependent = store.dependents[0]!
+    store.addRegistration(
+      registration({
+        id: 2,
+        incomes: [
+          {
+            id: 3,
+            category: 'clt',
+            amount: 'R$ 1.000,00',
+            inss: '',
+            irrf: '',
+            dependentId: dependent.id,
+          },
+        ],
+      }),
+    )
+    store.addExpense(
+      expense({
+        categoria: 'educacao',
+        tipo: 'graduacao',
+        beneficiario: 'dependente',
+        dependente_id: String(dependent.id),
+        valor_centavos: 200_000,
+        base_legal_ok: null,
+      }),
+    )
+
+    expect(store.dependentCount).toBe(0)
+    expect(store.taxEstimate).toMatchObject({
+      ok: true,
+      result: { rendimentos: 6_000_000, deducaoDependentes: 0 },
+    })
+    expect(store.deductionEffects?.educacaoPorPessoa).toEqual([])
+    expect(store.deductionEffects?.despesas[0]?.situacao).toBe('nao_deduz')
+  })
+
+  it('refuses an invalid expense when adding and when editing', () => {
+    const store = useIncomeStore()
+    const health = {
+      categoria: 'saude',
+      tipo: 'consulta_medica',
+      beneficiario: 'titular',
+      base_legal_ok: null,
+    } as const
+    expect(store.addExpense(expense({ ...health, valor_centavos: 0 }))).toBe(false)
+    expect(
+      store.addExpense(expense({ ...health, valor_centavos: 10_000, reembolso_centavos: 10_001 })),
+    ).toBe(false)
+    expect(
+      store.addExpense(expense({ ...health, beneficiario: 'dependente', dependente_id: '999' })),
+    ).toBe(false)
+    expect(store.expenses).toEqual([])
+
+    expect(
+      store.addExpense(expense({ ...health, valor_centavos: 10_000, descricao: '  Consulta  ' })),
+    ).toBe(true)
+    const saved = store.expenses[0]!
+    expect(saved.descricao).toBe('Consulta')
+    expect(store.updateExpense({ ...saved, reembolso_centavos: 20_000 })).toBe(false)
+    expect(store.updateExpense({ ...saved, id: saved.id + 100 })).toBe(false)
+    expect(store.updateExpense({ ...saved, valor_centavos: 12_000 })).toBe(true)
+    expect(store.expenses).toMatchObject([{ id: saved.id, valor_centavos: 12_000 }])
+  })
+
+  it('does not deduct alimony without the legal basis confirmed', () => {
+    const store = useIncomeStore()
+    withSalary(store, 'R$ 6.500,00')
+    store.addExpense(expense({ base_legal_ok: false }))
+
+    expect(store.taxEstimate).toMatchObject({ ok: true, result: { totalPensoes: 0 } })
+  })
+})
+
 // Intl puts a non-breaking space after "R$".
 const plain = (text: string | undefined) => (text ?? '').replace(/\u00a0/g, ' ')
 
@@ -375,7 +523,7 @@ describe('INSS and income tax checks against the payslip calculation', () => {
 
     expect(warnings).toHaveLength(1)
     expect(plain(warnings[0])).toContain('IR retido informado (R$ 900,00)')
-    expect(plain(warnings[0])).toContain('R$ 248,42')
+    expect(plain(warnings[0])).toContain('R$ 465,65')
   })
 
   it('stays quiet when the values match (to the cent) or are not typed yet', async () => {
@@ -422,8 +570,7 @@ describe('INSS and income tax checks against the payslip calculation', () => {
       informado: { bruto: 650_000, inss: 71_151, irrf: 24_842 },
       dependentes: 2,
       deducaoDependentes: 37_918,
-      pensao: 80_000,
-      folha: { inss: 71_151, irrf: 24_842, base: 460_931 },
+      folha: { inss: 71_151, irrf: 46_565 },
     })
     expect(rows[1]?.folha).toBeNull()
   })

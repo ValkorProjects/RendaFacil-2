@@ -15,7 +15,7 @@ export interface Tab {
 export const TABS: readonly Tab[] = [
   { id: 'home', label: 'Home', icon: 'home', route: 'home' },
   { id: 'income', label: 'Rendas', icon: 'income', route: 'income' },
-  { id: 'deductions', label: 'Dedutíveis', icon: 'deductions', route: 'deductions' },
+  { id: 'deductions', label: 'Despesas', icon: 'deductions', route: 'deductions' },
   { id: 'menu', label: 'Menu', icon: 'menu', route: 'menu' },
 ]
 

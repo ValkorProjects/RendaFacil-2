@@ -9,9 +9,10 @@ import {
   useIncomeStore,
   incomeCategoryLabels,
   incomeEntryError,
+  fillIncomeFromSalary,
   type RegisteredIncomeEntry,
 } from '@/stores/income'
-import { parametros } from '@/irpf'
+import { parametros, tipoDespesa } from '@/irpf'
 import { cents, formatCurrency, moneyConfig } from '@/utils/currency'
 import {
   dependentError,
@@ -31,6 +32,7 @@ const message = ref('')
 const incomeDrafts = ref<RegisteredIncomeEntry[]>([])
 const fillIncomeLater = ref(false)
 const saveError = ref('')
+const salaryErrors = ref<Record<number, string>>({})
 let nextIncomeDraftId = -1
 const addIncome = () =>
   incomeDrafts.value.push({
@@ -44,10 +46,14 @@ const hasSavedIncome = computed(() => incomeDrafts.value.some((income) => income
 const incomeQuestionError = (income: RegisteredIncomeEntry) =>
   incomeEntryError(income) ||
   (cents(income.amount) <= 0 ? 'Informe um valor mensal maior que zero.' : '')
+// Quem aparece em outra declaração não entra na conta: a renda dele não é pedida.
+const asksIncome = computed(
+  () => draft.value.teve_renda_propria && !draft.value.em_outra_declaracao,
+)
 const canSave = computed(
   () =>
     !dependentError(draft.value) &&
-    (!draft.value.teve_renda_propria ||
+    (!asksIncome.value ||
       fillIncomeLater.value ||
       (incomeDrafts.value.length > 0 &&
         incomeDrafts.value.every((income) => !incomeQuestionError(income)))),
@@ -70,6 +76,7 @@ const openForm = async (dependent?: RegisteredDependent) => {
   if (!incomeDrafts.value.length) addIncome()
   fillIncomeLater.value = false
   saveError.value = ''
+  salaryErrors.value = {}
   message.value = ''
   formOpen.value = true
   await nextTick()
@@ -91,6 +98,10 @@ const save = async () => {
   message.value =
     editingId.value === undefined ? 'Dependente adicionado.' : 'Dependente atualizado.'
   void closeForm()
+}
+// The dependent's own salary: no dependents of their own in this declaration.
+const fillFromSalary = (income: RegisteredIncomeEntry) => {
+  salaryErrors.value[income.id] = fillIncomeFromSalary(income, 0)
 }
 const remove = async (dependent: RegisteredDependent) => {
   if (!(await store.removeDependent(dependent.id))) return
@@ -124,7 +135,7 @@ const linkedIncomes = (id: number) =>
         nesta estimativa, nem com sua renda ou suas despesas.
       </p>
       <a
-        href="https://www.gov.br/receitafederal/pt-br/assuntos/meu-imposto-de-renda/preenchimento/dependentes"
+        href="https://www.gov.br/receitafederal/pt-br/acesso-a-informacao/perguntas-frequentes/imposto-de-renda/dirpf/deducoes/29-despesa-com-dependente"
         target="_blank"
         rel="noopener noreferrer"
         >Consultar as regras da Receita Federal (abre em nova aba)</a
@@ -179,7 +190,7 @@ const linkedIncomes = (id: number) =>
         2026?</label
       >
       <section
-        v-if="draft.teve_renda_propria"
+        v-if="asksIncome"
         class="income-questionnaire"
         aria-labelledby="dependent-income-title"
       >
@@ -240,6 +251,23 @@ const linkedIncomes = (id: number) =>
               v-bind="moneyConfig"
               inputmode="numeric"
             />
+            <template v-if="income.category === 'clt'">
+              <button
+                class="button secondary"
+                type="button"
+                :disabled="!cents(income.amount)"
+                @click="fillFromSalary(income)"
+              >
+                Calcular INSS e IR pelo salário
+              </button>
+              <p class="muted">
+                Supõe o mesmo salário todos os meses, sem dependentes nem pensão de
+                {{ draft.apelido.trim() || 'seu dependente' }}.
+              </p>
+            </template>
+            <p v-if="salaryErrors[income.id]" class="notice" role="alert">
+              Não foi possível calcular pelo salário. {{ salaryErrors[income.id] }}
+            </p>
             <p v-if="income.category === 'pensaoAlimenticia'" class="muted">
               Pensão alimentícia recebida é isenta. Deixe INSS e IR retido zerados.
             </p>
@@ -335,7 +363,8 @@ const linkedIncomes = (id: number) =>
               <p>As seguintes despesas serão apagadas:</p>
               <ul>
                 <li v-for="expense in store.expensesForDependent(dependent.id)" :key="expense.id">
-                  {{ expense.descricao }} — {{ formatCurrency(expense.valor_centavos) }}
+                  {{ expense.descricao || tipoDespesa(expense.tipo)?.rotulo || expense.tipo }} —
+                  {{ formatCurrency(expense.valor_centavos) }}
                 </li>
               </ul>
             </template>
@@ -445,6 +474,8 @@ select {
   padding: 0.75rem;
   border-left: 3px solid var(--color-accent);
   background: var(--glass-bg-raised);
+  /* Inside a card the two translucent backgrounds add up: muted text loses contrast in dark mode. */
+  color: var(--color-text);
 }
 .muted {
   font-size: 0.875rem;
@@ -453,6 +484,9 @@ select {
   color: var(--color-text);
 }
 a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.75rem;
   color: var(--color-accent);
 }
 </style>
