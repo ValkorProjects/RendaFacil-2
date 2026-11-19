@@ -12,6 +12,7 @@ import { defineStore } from 'pinia'
 import {
   calcularAjusteAnual,
   calcularFolhaMensal,
+  dependentePodeSerDeclarado,
   montarEntrada,
   parametros,
   type Entrada,
@@ -55,18 +56,14 @@ export interface IncomeRegistration {
   incomes: RegisteredIncomeEntry[]
 }
 
-// Dependents and the alimony paid belong to the whole declaration, not to an income source: they
-// are entered once and counted once, however many sources there are. (They used to live in each
-// registration and were added up, so typing them again for a second job counted them twice.)
-// Dependents live in their own registry; alimony remains here until the full RF-13 flow.
+// Dependents belong to the whole declaration, not to an income source: they are entered once and
+// counted once, however many sources there are.
 export interface Household {
   dependents: RegisteredDependent[]
-  // Court-ordered alimony paid per month, deducted in the full model
-  alimonyPaid: string
   expenses?: RegisteredExpense[]
 }
 
-export const emptyHousehold = (): Household => ({ dependents: [], alimonyPaid: '' })
+export const emptyHousehold = (): Household => ({ dependents: [], expenses: [] })
 
 // The tax engine's result, or why it could not calculate one.
 export type TaxEstimate =
@@ -102,14 +99,14 @@ const PAYROLL_TOLERANCE = 10
 export const payrollEstimate = (
   entry: RegisteredIncomeEntry,
   dependents: number,
-  alimonyPaid: string,
+  pensionPaidMonthlyCentavos = 0,
 ): ResultadoMensal | null => {
   if (entry.category !== 'clt' || cents(entry.amount) === 0) return null
   try {
     return calcularFolhaMensal({
       bruto: cents(entry.amount),
       dependentes: dependents,
-      pensao: cents(alimonyPaid),
+      pensao: pensionPaidMonthlyCentavos,
     })
   } catch {
     return null
@@ -122,9 +119,9 @@ export const payrollEstimate = (
 export const incomeEntryWarnings = (
   entry: RegisteredIncomeEntry,
   dependents: number,
-  alimonyPaid: string,
+  pensionPaidMonthlyCentavos = 0,
 ): string[] => {
-  const folha = payrollEstimate(entry, dependents, alimonyPaid)
+  const folha = payrollEstimate(entry, dependents, pensionPaidMonthlyCentavos)
   if (!folha) return []
   const warnings: string[] = []
   if (entry.inss.trim() && cents(entry.inss) > folha.inss + PAYROLL_TOLERANCE) {
@@ -167,13 +164,14 @@ export interface PayrollRow {
   folha: ResultadoMensal | null
 }
 
-// Every CLT source is checked with the declaration's dependents and alimony, as each employer's
+// Every CLT source is checked with the declaration's dependents and pension expenses, as each employer's
 // payslip would be if the employee told them about the dependents.
 export const buildPayrollRows = (
   registrations: readonly IncomeRegistration[],
   household: Household,
-): PayrollRow[] =>
-  registrations.flatMap((registration) =>
+): PayrollRow[] => {
+  const monthlyPensionPaid = monthlyPensionPaidFromExpenses(household.expenses ?? [])
+  return registrations.flatMap((registration) =>
     registration.incomes
       .filter(
         (income) =>
@@ -183,7 +181,7 @@ export const buildPayrollRows = (
       )
       .map((income) => {
         const dependentes = income.dependentId == null ? validDependents(household).length : 0
-        const pensao = income.dependentId == null ? household.alimonyPaid : ''
+        const pensao = income.dependentId == null ? monthlyPensionPaid : 0
         return {
           id: `${registration.id}-${income.id}`,
           label: incomeCategoryLabels[income.category],
@@ -194,14 +192,34 @@ export const buildPayrollRows = (
           },
           dependentes,
           deducaoDependentes: dependentes * parametros(2026).mensal.dependente,
-          pensao: cents(pensao),
+          pensao,
           folha: payrollEstimate(income, dependentes, pensao),
         }
       }),
   )
+}
+
+const monthlyPensionPaidFromExpenses = (expenses: readonly RegisteredExpense[]) =>
+  Math.round(
+    expenses.reduce(
+      (total, expense) =>
+        total +
+        (expense.categoria === 'pensao' &&
+        expense.base_legal_ok === true &&
+        expense.recebedor.trim()
+          ? expense.valor_centavos
+          : 0),
+      0,
+    ) / MONTHS_PER_YEAR,
+  )
 
 export const validDependents = (household: Household) =>
-  household.dependents.filter((dependent) => !dependent.em_outra_declaracao)
+  household.dependents.filter((dependent) =>
+    dependentePodeSerDeclarado(
+      { id: String(dependent.id), em_outra_declaracao: dependent.em_outra_declaracao },
+      household.expenses ?? [],
+    ),
+  )
 
 export const isIncludedIncome = (income: RegisteredIncomeEntry, household: Household) =>
   income.dependentId == null ||
@@ -247,7 +265,6 @@ export const buildTaxInput = (
     })),
     despesas: household.expenses ?? [],
   })
-  input.pensoes += annualize(cents(household.alimonyPaid))
   return input
 }
 
@@ -297,16 +314,15 @@ export const useIncomeStore = defineStore('income', () => {
   const draftIncomes = ref<RegisteredIncomeEntry[]>([newIncomeEntry(nextDraftId++)])
   const draftEditingRegistrationId = ref<number | null>(null)
 
-  // Saved dependents and expenses belong to the declaration. Alimony remains a form draft
-  // until saving; the Home estimate reads only server-confirmed rows.
+  // Saved dependents and expenses belong to the declaration. The Home estimate reads only
+  // server-confirmed rows.
   const expenses = ref<RegisteredExpense[]>([])
   const dependents = ref<RegisteredDependent[]>([])
   const hasDependents = computed(() => dependents.value.length > 0)
-  const alimonyPaid = ref('')
+  const monthlyPensionPaid = computed(() => monthlyPensionPaidFromExpenses(expenses.value))
   const household = computed<Household>(() => ({
     dependents: dependents.value,
     expenses: expenses.value,
-    alimonyPaid: alimonyPaid.value,
   }))
 
   const addRegistration = (state: MutationState, registration: IncomeRegistration) => {
@@ -352,7 +368,10 @@ export const useIncomeStore = defineStore('income', () => {
       const payroll = calcularFolhaMensal({
         bruto: cents(income.amount),
         dependentes: income.dependentId == null ? validDependents(household.value).length : 0,
-        pensao: income.dependentId == null ? cents(household.value.alimonyPaid) : 0,
+        pensao:
+          income.dependentId == null
+            ? monthlyPensionPaidFromExpenses(household.value.expenses ?? [])
+            : 0,
       })
       income.inss = formatMoneyInput(payroll.inss)
       income.irrf = formatMoneyInput(payroll.irrf)
@@ -455,7 +474,8 @@ export const useIncomeStore = defineStore('income', () => {
       !Number.isSafeInteger(expense.valor_centavos) ||
       !Number.isSafeInteger(expense.reembolso_centavos) ||
       expense.reembolso_centavos < 0 ||
-      expense.reembolso_centavos > expense.valor_centavos
+      expense.reembolso_centavos > expense.valor_centavos ||
+      (expense.categoria === 'pensao' && !expense.recebedor.trim())
     )
       return false
     if (
@@ -468,6 +488,7 @@ export const useIncomeStore = defineStore('income', () => {
     state.household.expenses.push({
       ...expense,
       descricao: expense.descricao.trim(),
+      recebedor: expense.recebedor.trim(),
       id: String(state.nextDraftId++),
     })
     return true
@@ -510,7 +531,6 @@ export const useIncomeStore = defineStore('income', () => {
     resetDraft()
     dependents.value = []
     expenses.value = []
-    alimonyPaid.value = ''
   }
 
   const saveDraft = (state: MutationState) => {
@@ -655,10 +675,9 @@ export const useIncomeStore = defineStore('income', () => {
       if (version !== accountVersion) return
       applyRows(rows)
       // The input stays usable during loading; don't overwrite anything already typed.
-      if (!alimonyPaid.value)
-        alimonyPaid.value = formatMoneyInput(rows.declaration?.pensao_mensal_centavos ?? 0)
       loaded.value = true
-    } catch {
+    } catch (error: unknown) {
+      console.error('Falha ao carregar declaração:', error)
       if (version === accountVersion)
         loadError.value =
           'Não foi possível carregar seus dados. Verifique a conexão e tente novamente.'
@@ -694,7 +713,6 @@ export const useIncomeStore = defineStore('income', () => {
     registrations.value = state.registrations
     dependents.value = state.household.dependents
     expenses.value = state.household.expenses ?? []
-    alimonyPaid.value = state.household.alimonyPaid
     draftIncomes.value = state.draftIncomes
     draftEditingRegistrationId.value = state.editingId
     nextDraftId = state.nextDraftId
@@ -726,7 +744,8 @@ export const useIncomeStore = defineStore('income', () => {
       if (!draftChanged) draftIncomes.value = currentDraft
       applyRows(rows)
       return true
-    } catch {
+    } catch (error: unknown) {
+      console.error('Falha ao salvar declaração:', error)
       if (version === accountVersion)
         saveError.value =
           'Não foi possível salvar. Seus campos foram mantidos; verifique a conexão e tente novamente.'
@@ -735,8 +754,6 @@ export const useIncomeStore = defineStore('income', () => {
       if (version === accountVersion) saving.value = false
     }
   }
-  const saveAlimony = () => persist(() => true)
-
   return {
     accountId,
     loading,
@@ -746,7 +763,6 @@ export const useIncomeStore = defineStore('income', () => {
     saveError,
     loadAccount,
     retryLoad,
-    saveAlimony,
     registrations,
     items,
     taxableTotal,
@@ -765,7 +781,7 @@ export const useIncomeStore = defineStore('income', () => {
     beginEditRegistration,
     hasDependents,
     dependents,
-    alimonyPaid,
+    monthlyPensionPaid,
     household,
     saveDependent: (fields: DependentFields, id?: number) =>
       persist((state) => saveDependent(state, fields, id)),

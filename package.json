@@ -7,7 +7,7 @@
     "dev": "vite --open",
     "build": "vue-tsc --build && vite build",
     "preview": "vite preview --open",
-    "test": "vitest run && node --test tests/*.test.mjs",
+    "test": "vitest run --silent=false && node --test tests/*.test.mjs",
     "test:watch": "vitest",
     "db:types": "node scripts/generate-database-types.mjs",
     "type-check": "vue-tsc --build",

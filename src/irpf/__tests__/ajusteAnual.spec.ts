@@ -29,6 +29,9 @@ const comoModelo = ([deducoes, base, impostoTabela, reducao, impostoDevido]: Lin
   impostoDevido,
 })
 
+const reais = (centavos: number) =>
+  Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(centavos / 100)
+
 // 12 meses de 6.500,00 com 2 dependentes e pensão de 800,00 por mês (exemplo do esboço)
 const F1 = entrada({
   fontes: [fonte(7_800_000, 853_812, 298_104)],
@@ -214,7 +217,19 @@ describe('calcularAjusteAnual · casos de referência do RF-08', () => {
   })
 
   it('devolve os intermediários para explicar a conta (F1)', () => {
-    expect(calcularAjusteAnual(F1)).toMatchObject({
+    const resultado = calcularAjusteAnual(F1)
+
+    console.log(
+      `[RF-24 F1] Completo: base ${reais(resultado.rendimentos)} - ${reais(resultado.completo.deducoes)} = ${reais(resultado.completo.base)}; imposto ${reais(resultado.completo.impostoTabela)} - ${reais(resultado.completo.reducao)} = ${reais(resultado.completo.impostoDevido)}`,
+    )
+    console.log(
+      `[RF-24 F1] Simplificado: base ${reais(resultado.rendimentos)} - ${reais(resultado.simplificado.deducoes)} = ${reais(resultado.simplificado.base)}; imposto ${reais(resultado.simplificado.impostoTabela)} - ${reais(resultado.simplificado.reducao)} = ${reais(resultado.simplificado.impostoDevido)}`,
+    )
+    console.log(
+      `[RF-24 F1] Saldo: ${reais(resultado.irrfRetido)} - ${reais(resultado.impostoDevido)} = ${reais(resultado.resultado)} (${resultado.modelo})`,
+    )
+
+    expect(resultado).toMatchObject({
       rendimentos: 7_800_000,
       irrfRetido: 298_104,
       totalPrevidencia: 853_812,

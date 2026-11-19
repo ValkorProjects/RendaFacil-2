@@ -29,6 +29,8 @@ const despesa = (dados: Partial<RegistroDespesa>): RegistroDespesa => ({
   valor_centavos: 30_000,
   reembolso_centavos: 0,
   base_legal_ok: null,
+  recebedor: 'Outra pessoa',
+  pensao_iniciou_em_2026: false,
   ...dados,
 })
 
@@ -141,6 +143,40 @@ describe('montarEntrada', () => {
     expect(entrada.pensoes).toBe(960_000)
   })
 
+  it('only declares a pension recipient as a dependent when the pension began in 2026', () => {
+    const pension = despesa({
+      categoria: 'pensao',
+      tipo: 'pensao_alimenticia',
+      beneficiario: 'dependente',
+      dependente_id: 'lia',
+      recebedor: 'Lia',
+      valor_centavos: 960_000,
+      base_legal_ok: true,
+    })
+    const dependentIncome = fonte({
+      dependente_id: 'lia',
+      rendimentos_centavos: 1_200_000,
+      previdencia_centavos: 0,
+      irrf_centavos: 0,
+    })
+    const withoutDependent = montarEntrada(
+      declaracao({ dependentes: [LIA], fontes: [fonte(), dependentIncome], despesas: [pension] }),
+    )
+    expect(withoutDependent.dependentes).toBe(0)
+    expect(withoutDependent.fontes).toHaveLength(1)
+    expect(withoutDependent.pensoes).toBe(960_000)
+
+    const withDependent = montarEntrada(
+      declaracao({
+        dependentes: [LIA],
+        fontes: [fonte(), dependentIncome],
+        despesas: [{ ...pension, pensao_iniciou_em_2026: true }],
+      }),
+    )
+    expect(withDependent.dependentes).toBe(1)
+    expect(withDependent.fontes).toHaveLength(2)
+  })
+
   it('recusa linha ligada a um dependente que não foi informado', () => {
     expect(() => montarEntrada(declaracao({ fontes: [fonte({ dependente_id: 'x' })] }))).toThrow(
       'Dependente x',
@@ -211,6 +247,17 @@ describe('avaliarDespesa', () => {
         base_legal_ok: true,
       },
       { deduz: true },
+    ],
+    [
+      'pensão sem recebedor',
+      {
+        categoria: 'pensao',
+        tipo: 'pensao_alimenticia',
+        beneficiario: 'outra',
+        recebedor: '',
+        base_legal_ok: true,
+      },
+      { deduz: false, motivo: 'beneficiario_invalido' },
     ],
   ])('%s', (_, dados, esperado) => {
     expect(avaliarDespesa(despesa(dados), dependentes)).toEqual(esperado)

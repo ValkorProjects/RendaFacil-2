@@ -86,7 +86,6 @@ export function createIncomeMapper(nextId: () => number) {
       registrations,
       household: {
         dependents,
-        alimonyPaid: formatMoneyInput(data.declaration?.pensao_mensal_centavos ?? 0),
         expenses: data.expenses.map((row) => ({
           ...expenseForEngine(row),
           id: String(uiId('expense', row.id)),
@@ -114,7 +113,6 @@ export function createIncomeMapper(nextId: () => number) {
       criado_em: '',
       atualizado_em: '',
       ...before.declaration,
-      pensao_mensal_centavos: cents(state.household.alimonyPaid),
     }
     return {
       declaration,

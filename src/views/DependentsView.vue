@@ -81,7 +81,7 @@ const closeForm = async () => {
   addButton.value?.focus()
 }
 const save = async () => {
-  if (!canSave.value) return
+  if (store.saving || !canSave.value) return
   const incomes = draft.value.teve_renda_propria && !fillIncomeLater.value ? incomeDrafts.value : []
   if (!(await store.saveDependentWithIncomes(draft.value, incomes, editingId.value))) {
     saveError.value =
@@ -267,7 +267,12 @@ const linkedIncomes = (id: number) =>
       <p v-if="saveError" role="alert">{{ saveError }}</p>
       <div class="actions">
         <button class="button secondary" type="button" @click="closeForm">Cancelar</button>
-        <button class="button" type="submit" :disabled="!canSave || !store.loaded || store.saving">
+        <button
+          class="button"
+          type="submit"
+          :disabled="!canSave || !store.loaded"
+          :aria-disabled="store.saving"
+        >
           Salvar dependente
         </button>
       </div>
@@ -346,7 +351,9 @@ const linkedIncomes = (id: number) =>
       </li>
     </ul>
     <RouterLink :to="{ name: 'income' }">Voltar ao questionário de Rendas</RouterLink>
-    <p class="muted">Os cadastros ficam disponíveis nesta sessão, assim como seus rendimentos.</p>
+    <p class="muted">
+      Os dependentes e rendimentos vinculados são salvos na sua declaração de 2026.
+    </p>
   </PageCard>
 </template>
 

@@ -16,6 +16,7 @@ import {
   type Household,
   type IncomeRegistration,
   type RegisteredDependent,
+  type RegisteredExpense,
   type RegisteredIncomeEntry,
 } from '@/stores/income'
 
@@ -49,6 +50,26 @@ const registration = (fields: Partial<IncomeRegistration>): IncomeRegistration =
 
 const household = (fields: Partial<Household>): Household => ({ ...emptyHousehold(), ...fields })
 
+const pensionExpense = (
+  fields: Partial<Omit<RegisteredExpense, 'id'>> = {},
+): Omit<RegisteredExpense, 'id'> => ({
+  descricao: 'Pensão alimentícia',
+  categoria: 'pensao',
+  tipo: 'pensao_alimenticia',
+  beneficiario: 'outra',
+  dependente_id: null,
+  recebedor: 'Pessoa beneficiada',
+  pensao_iniciou_em_2026: false,
+  valor_centavos: 960_000,
+  reembolso_centavos: 0,
+  base_legal_ok: true,
+  ...fields,
+})
+
+const savedPensionExpense = (
+  fields: Partial<Omit<RegisteredExpense, 'id'>> = {},
+): RegisteredExpense => ({ ...pensionExpense(fields), id: 'pension' })
+
 const noIncomeDependents = (count: number): RegisteredDependent[] =>
   Array.from({ length: count }, (_, index) => ({
     ...emptyDependent(),
@@ -63,11 +84,18 @@ beforeEach(async () => {
 })
 
 describe('income store · estimate from the income screen', () => {
+  it('requires a named recipient for an alimony expense', async () => {
+    const store = useIncomeStore()
+
+    expect(await store.addExpense(pensionExpense({ recebedor: '' }))).toBe(false)
+    expect(databaseMock.state.expenses).toEqual([])
+  })
+
   it('RF-08 case F1: 6.500 a month, 2 dependents without income and 800 of alimony', async () => {
     const store = useIncomeStore()
     fillDraft(store, { salary: 'R$ 6.500,00', inss: 'R$ 711,51', irrf: 'R$ 248,42' })
     await withDependents(store, 2)
-    store.alimonyPaid = 'R$ 800,00'
+    await store.addExpense(pensionExpense())
 
     expect(store.summaryTaxEstimate).toMatchObject({
       ok: true,
@@ -88,25 +116,24 @@ describe('income store · estimate from the income screen', () => {
     const store = useIncomeStore()
     fillDraft(store, { salary: 'R$ 6.500,00', inss: 'R$ 711,51', irrf: 'R$ 248,42' })
     await withDependents(store, 2)
-    store.alimonyPaid = 'R$ 800,00'
-
     expect(await store.saveDraft()).toBe(true)
+    await store.addExpense(pensionExpense())
 
     expect(store.dependentCount).toBe(2)
     expect(store.taxEstimate).toMatchObject({ ok: true, result: { resultado: -38_337 } })
     expect(store.summaryTaxEstimate).toEqual(store.taxEstimate)
   })
 
-  it('keeps dependents and alimony for the next registration instead of starting them over', async () => {
+  it('keeps dependents and pension expenses for the next registration instead of starting them over', async () => {
     const store = useIncomeStore()
     fillDraft(store, { salary: 'R$ 6.500,00', inss: 'R$ 711,51', irrf: 'R$ 248,42' })
     await withDependents(store, 2)
-    store.alimonyPaid = 'R$ 800,00'
     await store.saveDraft()
+    await store.addExpense(pensionExpense())
 
     expect(store.hasDependents).toBe(true)
     expect(store.dependents).toHaveLength(2)
-    expect(store.alimonyPaid).toBe('R$ 800,00')
+    expect(store.expenses).toHaveLength(1)
     expect(store.draftIncomes[0]?.amount).toBe('')
   })
 
@@ -114,13 +141,12 @@ describe('income store · estimate from the income screen', () => {
     const store = useIncomeStore()
     fillDraft(store, { salary: 'R$ 6.500,00', inss: 'R$ 711,51', irrf: 'R$ 248,42' })
     await withDependents(store, 2)
-    store.alimonyPaid = 'R$ 800,00'
     await store.saveDraft()
+    await store.addExpense(pensionExpense())
     fillDraft(store, { salary: 'R$ 2.000,00', inss: 'R$ 150,00' })
     await store.saveDraft()
 
-    // Before, a second registration kept its own copy: typing them again counted 4 dependents and
-    // 19.200,00 of alimony, and the tax due came out R$ 3.891,29 too low.
+    // Dependents and pension expenses are tied to the declaration, not duplicated by another job.
     expect(store.registrations).toHaveLength(2)
     expect(store.dependentCount).toBe(2)
     expect(store.taxEstimate).toMatchObject({
@@ -129,30 +155,29 @@ describe('income store · estimate from the income screen', () => {
     })
   })
 
-  it('updates the confirmed estimate after saving dependents and alimony', async () => {
+  it('updates the confirmed estimate after saving dependents and a pension expense', async () => {
     const store = useIncomeStore()
     fillDraft(store, { salary: 'R$ 6.500,00', inss: 'R$ 711,51', irrf: 'R$ 248,42' })
     await store.saveDraft()
     const without = store.taxEstimate
 
     await withDependents(store, 2)
-    store.alimonyPaid = 'R$ 800,00'
-
-    await store.saveAlimony()
+    await store.addExpense(pensionExpense())
     expect(store.taxEstimate).not.toEqual(without)
     expect(store.taxEstimate).toMatchObject({ ok: true, result: { resultado: -38_337 } })
   })
 
-  it('clears dependents and alimony with the account data', async () => {
+  it('clears dependents and pension expenses with the account data', async () => {
     const store = useIncomeStore()
     await withDependents(store, 2)
-    store.alimonyPaid = 'R$ 800,00'
+    await store.addExpense(pensionExpense())
 
     store.clearAccountData()
 
     expect(store.hasDependents).toBe(false)
     expect(store.dependents).toEqual([])
-    expect(store.alimonyPaid).toBe('')
+    expect(store.expenses).toEqual([])
+    expect(store.monthlyPensionPaid).toBe(0)
   })
 
   it('RF-08 case F2: 6.000 a month without deductions gives a refund in the simplified model', async () => {
@@ -169,13 +194,35 @@ describe('income store · estimate from the income screen', () => {
     const store = useIncomeStore()
     const income = fillDraft(store, { salary: 'R$ 6.500,00' })
     await withDependents(store, 2)
-    store.alimonyPaid = 'R$ 800,00'
+    await store.addExpense(pensionExpense())
 
     expect(store.fillDraftIncomeFromSalary(income.id)).toBe('')
 
     expect(income).toMatchObject({ inss: 'R$ 711,51', irrf: 'R$ 248,42' })
     // The payroll estimate and the annual adjustment agree with docs/calculo-irpf-2026.md.
     expect(store.summaryTaxEstimate).toMatchObject({ ok: true, result: { resultado: -38_337 } })
+  })
+
+  it('does not count a pension recipient as a dependent when the pension predates 2026', async () => {
+    const store = useIncomeStore()
+    fillDraft(store, { salary: 'R$ 6.500,00', inss: 'R$ 711,51', irrf: 'R$ 248,42' })
+    await store.saveDraft()
+    await store.saveDependent({ ...emptyDependent(), apelido: 'Lia' })
+    const dependent = store.dependents[0]!
+    await store.addExpense(
+      pensionExpense({
+        beneficiario: 'dependente',
+        dependente_id: String(dependent.id),
+        recebedor: 'Lia',
+        pensao_iniciou_em_2026: false,
+      }),
+    )
+
+    expect(store.dependentCount).toBe(0)
+    expect(store.taxEstimate).toMatchObject({
+      ok: true,
+      result: { deducaoDependentes: 0, totalPensoes: 960_000 },
+    })
   })
 
   it('does not save a source with more withheld than its income', async () => {
@@ -198,7 +245,7 @@ describe('income store · estimate from the income screen', () => {
 })
 
 describe('buildTaxInput', () => {
-  it('annualizes each source and leaves expenses empty', async () => {
+  it('annualizes each source and counts pension only from expense rows', async () => {
     expect(
       buildTaxInput(
         [
@@ -209,7 +256,9 @@ describe('buildTaxInput', () => {
             ],
           }),
         ],
-        household({ alimonyPaid: 'R$ 500,00' }),
+        household({
+          expenses: [savedPensionExpense({ valor_centavos: 600_000 })],
+        }),
       ),
     ).toEqual({
       fontes: [
@@ -253,7 +302,7 @@ describe('buildTaxInput', () => {
     expect(input.fontes).toEqual([{ rendimentos: 1_440_000, previdencia: 0, irrf: 0 }])
   })
 
-  it('adds up the sources of several registrations, with dependents and alimony once', async () => {
+  it('adds up the sources of several registrations, with dependents and pension once', async () => {
     const input = buildTaxInput(
       [
         registration({
@@ -265,7 +314,10 @@ describe('buildTaxInput', () => {
           incomes: [{ id: 2, category: 'clt', amount: 'R$ 2.000,00', inss: '', irrf: '' }],
         }),
       ],
-      household({ dependents: noIncomeDependents(1), alimonyPaid: 'R$ 100,00' }),
+      household({
+        dependents: noIncomeDependents(1),
+        expenses: [savedPensionExpense({ valor_centavos: 120_000 })],
+      }),
     )
 
     expect(input).toMatchObject({ dependentes: 1, pensoes: 120_000 })
@@ -279,7 +331,10 @@ describe('estimateTax', () => {
     expect(
       estimateTax(
         [registration({})],
-        household({ dependents: noIncomeDependents(2), alimonyPaid: 'R$ 800,00' }),
+        household({
+          dependents: noIncomeDependents(2),
+          expenses: [savedPensionExpense()],
+        }),
       ),
     ).toBeNull()
   })
@@ -299,16 +354,16 @@ describe('INSS and income tax checks against the payslip calculation', () => {
   })
 
   it('estimates INSS and IRRF for a CLT salary (6.500, 2 dependents, 800 of alimony)', async () => {
-    expect(payrollEstimate(clt({}), 2, 'R$ 800,00')).toMatchObject({ inss: 71_151, irrf: 24_842 })
+    expect(payrollEstimate(clt({}), 2, 80_000)).toMatchObject({ inss: 71_151, irrf: 24_842 })
   })
 
   it('has no estimate for other categories or without a salary', async () => {
-    expect(payrollEstimate(clt({ category: 'alugueis' }), 0, '')).toBeNull()
-    expect(payrollEstimate(clt({ amount: '' }), 0, '')).toBeNull()
+    expect(payrollEstimate(clt({ category: 'alugueis' }), 0)).toBeNull()
+    expect(payrollEstimate(clt({ amount: '' }), 0)).toBeNull()
   })
 
   it('warns when the typed INSS is above the table: 6.500 with INSS of 1.300', async () => {
-    const warnings = incomeEntryWarnings(clt({ inss: 'R$ 1.300,00' }), 2, 'R$ 800,00')
+    const warnings = incomeEntryWarnings(clt({ inss: 'R$ 1.300,00' }), 2, 80_000)
 
     expect(warnings).toHaveLength(1)
     expect(plain(warnings[0])).toContain('INSS informado (R$ 1.300,00)')
@@ -316,11 +371,7 @@ describe('INSS and income tax checks against the payslip calculation', () => {
   })
 
   it('warns when the typed income tax differs from the payroll table', async () => {
-    const warnings = incomeEntryWarnings(
-      clt({ inss: 'R$ 711,51', irrf: 'R$ 900,00' }),
-      2,
-      'R$ 800,00',
-    )
+    const warnings = incomeEntryWarnings(clt({ inss: 'R$ 711,51', irrf: 'R$ 900,00' }), 2, 80_000)
 
     expect(warnings).toHaveLength(1)
     expect(plain(warnings[0])).toContain('IR retido informado (R$ 900,00)')
@@ -328,18 +379,18 @@ describe('INSS and income tax checks against the payslip calculation', () => {
   })
 
   it('stays quiet when the values match (to the cent) or are not typed yet', async () => {
-    expect(
-      incomeEntryWarnings(clt({ inss: 'R$ 711,51', irrf: 'R$ 248,42' }), 2, 'R$ 800,00'),
-    ).toEqual([])
-    expect(incomeEntryWarnings(clt({}), 2, 'R$ 800,00')).toEqual([])
+    expect(incomeEntryWarnings(clt({ inss: 'R$ 711,51', irrf: 'R$ 248,42' }), 2, 80_000)).toEqual(
+      [],
+    )
+    expect(incomeEntryWarnings(clt({}), 2, 80_000)).toEqual([])
     // within the R$ 0,10 rounding tolerance
-    expect(
-      incomeEntryWarnings(clt({ inss: 'R$ 711,55', irrf: 'R$ 248,40' }), 2, 'R$ 800,00'),
-    ).toEqual([])
+    expect(incomeEntryWarnings(clt({ inss: 'R$ 711,55', irrf: 'R$ 248,40' }), 2, 80_000)).toEqual(
+      [],
+    )
   })
 
   it('does not warn about a lower INSS: a second employer shares the ceiling', async () => {
-    expect(incomeEntryWarnings(clt({ inss: 'R$ 400,00' }), 2, 'R$ 800,00')).toEqual([])
+    expect(incomeEntryWarnings(clt({ inss: 'R$ 400,00' }), 2, 80_000)).toEqual([])
   })
 
   it('never blocks saving: the warnings are only advice', async () => {
@@ -360,7 +411,10 @@ describe('INSS and income tax checks against the payslip calculation', () => {
           ],
         }),
       ],
-      household({ dependents: noIncomeDependents(2), alimonyPaid: 'R$ 800,00' }),
+      household({
+        dependents: noIncomeDependents(2),
+        expenses: [savedPensionExpense()],
+      }),
     )
 
     expect(rows).toHaveLength(2)

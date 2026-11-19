@@ -21,8 +21,13 @@ const store = useIncomeStore()
 .sync-status {
   width: 100%;
 }
-.sync-status:has(p) {
+.sync-status:has(p, div) {
+  position: sticky;
+  top: 0.5rem;
+  z-index: 30;
   padding: 1rem;
+  border-radius: 1rem;
+  background: var(--glass-bg-raised-solid);
 }
 [role='alert'] {
   color: var(--color-danger);

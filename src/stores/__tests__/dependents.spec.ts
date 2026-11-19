@@ -34,6 +34,8 @@ const expense = (id: number | null, description = 'Escola') => ({
   valor_centavos: 500_000,
   reembolso_centavos: 0,
   base_legal_ok: null,
+  recebedor: '',
+  pensao_iniciou_em_2026: false,
 })
 
 describe('RF-11 · cadastro e cálculo de dependentes', () => {

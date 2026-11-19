@@ -32,6 +32,8 @@ const despesa = (dados: Partial<RegistroDespesa>): RegistroDespesa => ({
   valor_centavos: 30_000,
   reembolso_centavos: 0,
   base_legal_ok: null,
+  recebedor: 'Outra pessoa',
+  pensao_iniciou_em_2026: false,
   ...dados,
 })
 

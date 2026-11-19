@@ -46,7 +46,6 @@ globalThis.fetch = async (input, options = {}) => {
       persistedDeclaration ??= {
         id: '00000000-0000-4000-8000-000000000010',
         ...body,
-        pensao_mensal_centavos: 0,
       }
       return new Response(null, { status: 201 })
     }
@@ -66,8 +65,6 @@ globalThis.fetch = async (input, options = {}) => {
           (row) => !patch['excluir_' + key].includes(row.id),
         )
       }
-      if ('pensao_mensal_centavos' in patch)
-        persistedDeclaration.pensao_mensal_centavos = patch.pensao_mensal_centavos
       return new Response(null, { status: 204 })
     }
     const row = persistedDeclaration && {
@@ -259,12 +256,26 @@ test('dependents without income survive saving and account data is cleared on si
   assert.equal(income.dependents[0].teve_renda_propria, false)
   assert.equal(income.taxableTotal, 1800000)
   income.draftIncomes[0].amount = '20000'
-  income.alimonyPaid = '80000'
+  assert.equal(
+    await income.addExpense({
+      descricao: 'Pensão alimentícia',
+      categoria: 'pensao',
+      tipo: 'pensao_alimenticia',
+      beneficiario: 'outra',
+      dependente_id: null,
+      recebedor: 'Pessoa beneficiada',
+      pensao_iniciou_em_2026: false,
+      valor_centavos: 800000,
+      reembolso_centavos: 0,
+      base_legal_ok: true,
+    }),
+    true,
+  )
   await auth.signOut()
   assert.equal(income.registrations.length, 0)
   assert.equal(income.draftIncomes[0].amount, '')
   assert.equal(income.dependentCount, 0)
-  assert.equal(income.alimonyPaid, '')
+  assert.deepEqual(income.expenses, [])
 })
 
 test('deletion failure preserves the account and data; confirmed deletion signs out and clears them', async () => {

@@ -41,13 +41,13 @@ onMounted(() => {
     <UserView v-else-if="isGuest && !route.meta.public" />
     <template v-else>
       <DataSyncStatus v-if="signedIn" />
-      <fieldset class="data-content" :disabled="income.saving" :aria-busy="income.saving">
+      <div class="data-content" :aria-busy="income.saving">
         <RouterView v-slot="{ Component }">
           <Transition name="page" mode="out-in">
             <component :is="Component" :key="income.accountId ?? 'guest'" />
           </Transition>
         </RouterView>
-      </fieldset>
+      </div>
     </template>
   </main>
   <BottomNav v-if="signedIn" />

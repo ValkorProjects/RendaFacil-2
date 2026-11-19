@@ -17,7 +17,7 @@ export type { EntradaMensal, ResultadoMensal } from './folhaMensal'
 export { TIPOS_DESPESA, tipoDespesa } from './despesas'
 export type { CategoriaDespesa, IdTipoDespesa, TipoDespesa } from './despesas'
 
-export { avaliarDespesa, montarEntrada } from './entrada'
+export { avaliarDespesa, dependentePodeSerDeclarado, montarEntrada } from './entrada'
 export type {
   AvaliacaoDespesa,
   DadosDeclaracao,

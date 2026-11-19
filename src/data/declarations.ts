@@ -36,7 +36,6 @@ export function montarEntradaDoBanco(data: DeclarationData) {
     dependentes: data.dependents,
     despesas: data.expenses.map(expenseForEngine),
   })
-  input.pensoes += (data.declaration?.pensao_mensal_centavos ?? 0) * 12
   return input
 }
 
@@ -70,23 +69,15 @@ export function createDeclarationRepository(client: SupabaseClient<Database>) {
   }
 
   async function load(userId: string): Promise<DeclarationData> {
-    const { data: declaration, error } = await client
+    const { data, error } = await client
       .from('declaracoes')
-      .select('*')
+      .select('*, fontes_pagadoras(*), dependentes(*), despesas(*)')
       .eq('user_id', userId)
       .eq('ano_calendario', DECLARATION_YEAR)
       .maybeSingle()
     if (error) throw error
-    if (!declaration) return emptyDeclaration()
-    // Read one SQL snapshot through a nested select; a dependent cannot disappear between queries.
-    const result = await client
-      .from('declaracoes')
-      .select('*, fontes_pagadoras(*), dependentes(*), despesas(*)')
-      .eq('id', declaration.id)
-      .eq('user_id', userId)
-      .single()
-    if (result.error) throw result.error
-    const { fontes_pagadoras, dependentes, despesas, ...row } = result.data
+    if (!data) return emptyDeclaration()
+    const { fontes_pagadoras, dependentes, despesas, ...row } = data
     return {
       declaration: row,
       sources: fontes_pagadoras,
@@ -105,7 +96,7 @@ export function createDeclarationRepository(client: SupabaseClient<Database>) {
     const next = {
       declaration: {
         ...declaration,
-        pensao_mensal_centavos: after.declaration?.pensao_mensal_centavos ?? 0,
+        fontes_esperadas: after.declaration?.fontes_esperadas ?? declaration.fontes_esperadas,
       },
       sources: after.sources.map((row) => ({ ...row, ...scope })),
       dependents: after.dependents.map((row) => ({ ...row, ...scope })),
@@ -118,14 +109,14 @@ export function createDeclarationRepository(client: SupabaseClient<Database>) {
       excluir_fontes: removed(before.sources, next.sources),
       excluir_dependentes: removed(before.dependents, next.dependents),
       excluir_despesas: removed(before.expenses, next.expenses),
-      ...(before.declaration?.pensao_mensal_centavos !== next.declaration.pensao_mensal_centavos
-        ? { pensao_mensal_centavos: next.declaration.pensao_mensal_centavos }
+      ...(before.declaration?.fontes_esperadas !== next.declaration.fontes_esperadas
+        ? { fontes_esperadas: next.declaration.fontes_esperadas }
         : {}),
     }
     for (const row of [
       ...next.sources,
       ...next.expenses,
-      { pensao_mensal_centavos: next.declaration.pensao_mensal_centavos },
+      { fontes_esperadas: next.declaration.fontes_esperadas },
     ]) {
       for (const [key, value] of Object.entries(row)) {
         if (

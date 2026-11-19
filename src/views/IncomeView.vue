@@ -37,7 +37,7 @@ const incomeWarnings = (income: RegisteredIncomeEntry | undefined) =>
     ? incomeEntryWarnings(
         income,
         income.dependentId == null ? incomeStore.dependentCount : 0,
-        income.dependentId == null ? incomeStore.household.alimonyPaid : '',
+        income.dependentId == null ? incomeStore.monthlyPensionPaid : 0,
       )
     : []
 
@@ -86,7 +86,7 @@ const setEditingOwner = (index: number, event: Event) => {
 }
 
 const saveInlineEdit = async () => {
-  if (editingRegistrationId.value === null || !canSaveInlineEdit.value) return
+  if (incomeStore.saving || editingRegistrationId.value === null || !canSaveInlineEdit.value) return
 
   const saved = await incomeStore.updateRegistration({
     id: editingRegistrationId.value,
@@ -96,6 +96,7 @@ const saveInlineEdit = async () => {
 }
 
 const saveIncomeAndReturn = async () => {
+  if (incomeStore.saving) return
   if (await incomeStore.saveDraft()) router.push({ name: 'home' })
 }
 </script>
@@ -137,7 +138,8 @@ const saveIncomeAndReturn = async () => {
                   <button
                     class="edit-button"
                     type="button"
-                    :disabled="!canSaveInlineEdit || !incomeStore.loaded || incomeStore.saving"
+                    :disabled="!canSaveInlineEdit || !incomeStore.loaded"
+                    :aria-disabled="incomeStore.saving"
                     @click="saveInlineEdit"
                   >
                     Salvar
@@ -429,42 +431,6 @@ const saveIncomeAndReturn = async () => {
         </p>
       </section>
 
-      <section class="form-section glass" aria-labelledby="alimony-title">
-        <div class="section-heading">
-          <div>
-            <p class="section-kicker">03</p>
-            <h2 id="alimony-title">Pensão alimentícia paga</h2>
-          </div>
-          <span class="section-status optional">Opcional</span>
-        </div>
-        <p class="field-help">
-          Só deduz a pensão fixada por decisão judicial, acordo homologado na Justiça ou escritura
-          pública. A pensão recebida deve ser lançada em Rendas, na categoria isenta e com o
-          beneficiário correto.
-        </p>
-        <p class="field-help">
-          Informe o total pago por mês uma vez só: vale para a declaração inteira, não para cada
-          fonte de renda.
-        </p>
-        <label class="field-label" for="alimony-amount">Valor mensal</label>
-        <Money3Component
-          id="alimony-amount"
-          class="field-control currency-input"
-          inputmode="numeric"
-          autocomplete="off"
-          v-model="incomeStore.alimonyPaid"
-          v-bind="moneyConfig"
-        />
-        <button
-          class="button"
-          type="button"
-          :disabled="!incomeStore.loaded || incomeStore.saving"
-          @click="incomeStore.saveAlimony"
-        >
-          Salvar pensão
-        </button>
-      </section>
-
       <footer class="summary-card" aria-labelledby="summary-title">
         <div class="summary-heading">
           <div>
@@ -504,7 +470,8 @@ const saveIncomeAndReturn = async () => {
       <button
         class="button add-registration-button"
         type="button"
-        :disabled="!incomeStore.canSaveDraft || !incomeStore.loaded || incomeStore.saving"
+        :disabled="!incomeStore.canSaveDraft || !incomeStore.loaded"
+        :aria-disabled="incomeStore.saving"
         @click="saveIncomeAndReturn"
       >
         {{ incomeStore.saving ? 'Salvando…' : 'Adicionar' }}

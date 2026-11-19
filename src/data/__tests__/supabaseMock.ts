@@ -20,7 +20,6 @@ export function declaration(userId = USER_A): Tables<'declaracoes'> {
     resultado_estimado_centavos: null,
     criado_em: '',
     atualizado_em: '',
-    pensao_mensal_centavos: 0,
   }
 }
 
@@ -110,13 +109,13 @@ export function createSupabaseMock() {
         for (const row of patch[name] as { id: string }[]) {
           const index = rows.findIndex((item) => item.id === row.id)
           if (index < 0) rows.push(structuredClone(row))
-          else rows[index] = structuredClone(row)
+          else rows[index] = { ...rows[index], ...structuredClone(row) }
         }
         const ids = patch['excluir_' + name] as string[]
         for (let i = rows.length - 1; i >= 0; i--) if (ids.includes(rows[i]!.id)) rows.splice(i, 1)
       }
-      if (typeof patch.pensao_mensal_centavos === 'number')
-        state.declaration!.pensao_mensal_centavos = patch.pensao_mensal_centavos
+      if (typeof patch.fontes_esperadas === 'number')
+        state.declaration!.fontes_esperadas = patch.fontes_esperadas
       return { data: null, error: null }
     },
   )

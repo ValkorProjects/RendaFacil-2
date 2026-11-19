@@ -50,16 +50,16 @@ O resultado é uma **estimativa**. O que vale é a declaração entregue à Rece
 
 Em desenvolvimento, rumo ao MVP. As funcionalidades estão organizadas em issues com o prefixo `RF-` no [GitHub](https://github.com/ValkorProjects/RendaFacil-2/issues).
 
-| Pronto                                                                                | Em andamento ou planejado                                    |
-| ------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
-| Motor de cálculo do ajuste anual e da folha mensal, com testes de casos de referência | Questionário inicial com triagem                             |
-| Parâmetros fiscais de 2026                                                            |         |
-| Estrutura do banco e políticas RLS definidas em [`supabase/`](supabase/)              | Telas finais de Rendas e Dedutíveis             |
-| Rendas, dependentes e despesas persistidos no Supabase                  | Home com o resultado e o detalhe do cálculo                  |
-| Cadastro, login, perfil, consentimento e política de privacidade                      | Publicação da Edge Function de exclusão e deploy de produção |
-| Documentação do cálculo                                                               |                                                              |
-| Layout base: saudação, barra inferior (Home, Rendas, Dedutíveis, Menu)                |                                                              |
-| Cadastro de dependentes em `/dependentes`, com acesso pelo Menu e questionário de Rendas |                                                          |
+| Pronto                                                                                   | Em andamento ou planejado                                    |
+| ---------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| Motor de cálculo do ajuste anual e da folha mensal, com testes de casos de referência    | Questionário inicial com triagem                             |
+| Parâmetros fiscais de 2026                                                               | —                                                            |
+| Estrutura do banco e políticas RLS definidas em [`supabase/`](supabase/)                 | Telas finais de Rendas e Dedutíveis                          |
+| Rendas, dependentes e despesas persistidos no Supabase                                   | Home com o resultado e o detalhe do cálculo                  |
+| Cadastro, login, perfil, consentimento e política de privacidade                         | Publicação da Edge Function de exclusão e deploy de produção |
+| Documentação do cálculo                                                                  | —                                                            |
+| Layout base: saudação, barra inferior (Home, Rendas, Dedutíveis, Menu)                   | —                                                            |
+| Cadastro de dependentes em `/dependentes`, com acesso pelo Menu e questionário de Rendas | —                                                            |
 
 O cadastro de dependentes guarda apenas apelido, relação, presença em outra declaração e renda
 própria em 2026. Dependentes em outra declaração, suas rendas e despesas ficam fora do cálculo.
@@ -70,11 +70,11 @@ tipo de rendimento, valor mensal, INSS e IR retido, com suporte a várias fontes
 são salvos junto com o dependente e aparecem automaticamente em Rendas. A opção “Preencher
 depois” mantém a pendência; editar o dependente recupera os valores já cadastrados.
 
-Dedutíveis permite lançar despesas anuais de saúde e educação com beneficiário; o motor aplica
-o limite de educação por pessoa. Ao excluir um dependente, a confirmação lista suas despesas
-e informa a remoção dos rendimentos vinculados. Todos esses dados ainda ficam em memória nesta
-sessão, sem persistência após recarregar a página. O questionário inicial separado segue planejado;
-o acesso atual ao cadastro está no formulário de Rendas.
+Dedutíveis permite lançar despesas anuais de saúde, educação e pensão alimentícia. O motor aplica
+o limite de educação por pessoa e informa quando uma despesa não é dedutível. Ao excluir um
+dependente, a confirmação lista suas despesas e informa a remoção dos rendimentos vinculados.
+Esses dados ficam na declaração da conta e são carregados ao entrar. O questionário inicial separado
+segue planejado; o acesso atual ao cadastro está no formulário de Rendas.
 
 Fora do escopo do MVP: aluguel recebido, autônomo, MEI ou PJ (carnê-leão), aposentadoria, ganho de capital, bolsa de valores, renda do exterior e previdência privada. A lista completa está na [seção 9 da documentação do cálculo](docs/calculo-irpf-2026.md#9-fora-do-escopo-do-mvp).
 
@@ -235,9 +235,10 @@ As fórmulas, a tabela de parâmetros com as fontes oficiais, as regras de arred
 As migrations em [`supabase/migrations/`](supabase/migrations/) definem as tabelas `perfis`,
 `declaracoes`, `fontes_pagadoras`, `dependentes` e `despesas`, com políticas RLS (Row Level Security)
 para restringir o acesso aos dados do usuário autenticado. A camada [`src/data/`](src/data/)
-carrega a declaração de 2026 ao entrar e persiste rendas, dependentes, despesas e pensão paga.
-Os formulários mantêm os campos em caso de falha; a Home calcula sobre as linhas confirmadas no
-banco. Ao sair ou trocar de conta, o cache e os rascunhos são limpos, sem apagar o banco.
+carrega a declaração de 2026 ao entrar e persiste rendas, dependentes e despesas, incluindo pensão
+alimentícia. Os formulários mantêm os campos em caso de falha; a Home calcula sobre as linhas
+confirmadas no banco. Ao sair ou trocar de conta, o cache e os rascunhos são limpos, sem apagar
+o banco.
 
 Aplique as migrações antes de executar esta versão contra um projeto remoto (CLI v3):
 
@@ -246,18 +247,20 @@ npx supabase login
 npx supabase db push --remote=SEU_PROJECT_REF
 ```
 
-A migração [`20261119050828_persistencia_rendas.sql`](supabase/migrations/20261119050828_persistencia_rendas.sql)
-adiciona categoria e agrupamento de rendas, pensão mensal da declaração e a RPC
-`salvar_lancamentos`. A RPC usa `SECURITY INVOKER`, respeita RLS e grava apenas as linhas
-alteradas, em uma transação. O app também garante a declaração na primeira gravação com
-`ON CONFLICT DO NOTHING`, atendendo contas anteriores ao trigger de cadastro.
+A migração inicial [`20261119050828_persistencia_rendas.sql`](supabase/migrations/20261119050828_persistencia_rendas.sql)
+adiciona o agrupamento de rendas e a RPC `salvar_lancamentos`. A migração seguinte
+[`20261119180000_pensao_como_despesa.sql`](supabase/migrations/20261119180000_pensao_como_despesa.sql)
+registra pensão alimentícia como despesa anual, atualiza a RPC e remove o campo mensal legado.
+A RPC usa `SECURITY INVOKER`, respeita RLS e grava apenas as linhas alteradas, em uma transação.
+O app também garante a declaração na primeira gravação com `ON CONFLICT DO NOTHING`, atendendo
+contas anteriores ao trigger de cadastro.
 
 As rendas são gravadas em centavos **anuais**; o formulário mostra a média mensal. Valores anuais
-que não dividem por 12 são preservados exatamente enquanto o campo não muda. Despesas usam
-centavos anuais; até o formulário coletar uma data específica, `data` representa o fechamento do
-ano (`2026-12-31`). A pensão da seção de Rendas usa centavos mensais e é salva pelo botão
-**Salvar pensão** ou junto do próximo lançamento. As relações do formulário são convertidas
-explicitamente para `conjuge` e `pais_avos`, como definido no RF-02.
+que não dividem por 12 são preservados exatamente enquanto o campo não muda. Despesas, inclusive
+pensão alimentícia, usam centavos anuais; até o formulário coletar uma data específica, `data`
+representa o fechamento do ano (`2026-12-31`). A pensão é lançada em Dedutíveis com o nome de quem
+a recebeu e a informação de base legal. As relações do formulário são convertidas explicitamente
+para `conjuge` e `pais_avos`, como definido no RF-02.
 
 ### Conectar um projeto
 
@@ -328,10 +331,10 @@ O script só substitui o arquivo após a geração terminar com sucesso. Não ed
 
 `npm test` cobre a camada de dados com cliente Supabase simulado, recarga, troca de conta,
 erros de rede, edições, exclusões e preservação de centavos. Para verificar as políticas RLS e
-rollback transacional no Postgres local, após `npx supabase db start`:
+rollback transacional no Postgres local, inicie a stack com `npx supabase db start` e rode:
 
 ```bash
-docker exec -i supabase_db_RendaFacil-2 psql -U postgres -d postgres -v ON_ERROR_STOP=1 < supabase/tests/persistencia.sql
+npx supabase test db
 ```
 
 As contas temporárias do teste são revertidas ao final da transação.

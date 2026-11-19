@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import {
   createDeclarationRepository,
@@ -15,6 +15,10 @@ beforeEach(() => {
   db.reset()
   setActivePinia(createPinia())
 })
+afterEach(() => vi.restoreAllMocks())
+
+const captureExpectedErrors = () => vi.spyOn(console, 'error').mockImplementation(() => {})
+
 const connect = async () => {
   const store = useIncomeStore()
   await store.loadAccount(USER_A)
@@ -28,13 +32,16 @@ describe('RF · persistence with a mocked Supabase client', () => {
   it('scopes reads to the owner and 2026, without creating an empty declaration on entry', async () => {
     const repo = createDeclarationRepository(db.client)
     expect(await repo.load(USER_A)).toEqual(emptyDeclaration())
+    expect(db.calls).toHaveLength(1)
     expect(db.calls[0]).toMatchObject({
       table: 'declaracoes',
       filters: { user_id: USER_A, ano_calendario: 2026 },
+      columns: '*, fontes_pagadoras(*), dependentes(*), despesas(*)',
     })
     expect(db.calls.some((call) => call.operation === 'upsert')).toBe(false)
     db.seed({ ...emptyDeclaration(), declaration: declaration(USER_A) })
     expect((await repo.load(USER_B)).declaration).toBeNull()
+    expect(db.calls).toHaveLength(2)
   })
 
   it('creates a missing declaration for old accounts and writes integer annual cents', async () => {
@@ -77,7 +84,21 @@ describe('RF · persistence with a mocked Supabase client', () => {
       dependente_id: String(person.id),
       valor_centavos: 12345,
       reembolso_centavos: 345,
+      recebedor: '',
+      pensao_iniciou_em_2026: false,
       base_legal_ok: null,
+    })
+    await store.addExpense({
+      descricao: 'Pensão',
+      categoria: 'pensao',
+      tipo: 'pensao_alimenticia',
+      beneficiario: 'dependente',
+      dependente_id: String(person.id),
+      recebedor: 'Lia',
+      pensao_iniciou_em_2026: true,
+      valor_centavos: 250000,
+      reembolso_centavos: 0,
+      base_legal_ok: true,
     })
     const estimate = store.taxEstimate
     store.clearAccountData()
@@ -88,6 +109,11 @@ describe('RF · persistence with a mocked Supabase client', () => {
     expect(store.registrations).toHaveLength(1)
     expect(store.dependents[0]).toMatchObject({ apelido: 'Lia', relacao: 'conjuge_companheiro' })
     expect(store.expenses[0]).toMatchObject({ valor_centavos: 12345, reembolso_centavos: 345 })
+    expect(store.expenses[1]).toMatchObject({
+      categoria: 'pensao',
+      recebedor: 'Lia',
+      pensao_iniciou_em_2026: true,
+    })
     expect(store.taxEstimate).toEqual(estimate)
     expect(store.registrations[0]!.incomes[0]!.dependentId).toBe(store.dependents[0]!.id)
   })
@@ -114,6 +140,7 @@ describe('RF · persistence with a mocked Supabase client', () => {
 
   it('preserves the form and saved estimate on network failure; retry does not duplicate sources', async () => {
     const store = await connect()
+    const errors = captureExpectedErrors()
     fill(store)
     const draft = structuredClone(JSON.parse(JSON.stringify(store.draftIncomes)))
     db.fail('write')
@@ -129,10 +156,12 @@ describe('RF · persistence with a mocked Supabase client', () => {
     expect(store.taxEstimate).toEqual(estimate)
     db.fail(null)
     expect(db.state.sources).toHaveLength(1)
+    expect(errors).toHaveBeenCalledTimes(2)
   })
 
   it('retries with the same UUID when the server committed but its response was lost', async () => {
     const store = await connect()
+    const errors = captureExpectedErrors()
     fill(store)
     const implementation = db.rpc.getMockImplementation()!
     db.rpc.mockImplementationOnce(async (...args) => {
@@ -143,10 +172,12 @@ describe('RF · persistence with a mocked Supabase client', () => {
     const id = db.state.sources[0]!.id
     expect(await store.saveDraft()).toBe(true)
     expect(db.state.sources.map((row) => row.id)).toEqual([id])
+    expect(errors).toHaveBeenCalledTimes(1)
   })
 
   it('keeps drafts on a load error and allows an explicit retry', async () => {
     const store = useIncomeStore()
+    const errors = captureExpectedErrors()
     fill(store)
     // First account connection clears previous account data, then fields can be typed while loading.
     db.fail('read')
@@ -159,6 +190,7 @@ describe('RF · persistence with a mocked Supabase client', () => {
     await store.retryLoad()
     expect(store.draftIncomes[0]!.amount).toBe('R$ 6.500,00')
     expect(store.loaded).toBe(true)
+    expect(errors).toHaveBeenCalledTimes(1)
   })
 
   it('ignores a late save response after switching account and blocks repeated saves', async () => {
@@ -220,8 +252,45 @@ describe('RF · persistence with a mocked Supabase client', () => {
     expect(db.rpc.mock.lastCall![1].p_alteracoes).toMatchObject({ fontes: [] })
   })
 
+  it('keeps 13th salary, tax and profit-sharing fields when updating a source', async () => {
+    const store = await connect()
+    fill(store)
+    await store.saveDraft()
+    const data = db.state
+    data.sources[0]!.decimo_terceiro_centavos = 43210
+    data.sources[0]!.irrf_13_centavos = 9876
+    data.sources[0]!.plr_centavos = 12345
+    db.seed(data)
+
+    let counter = 0
+    const mapper = createIncomeMapper(() => ++counter)
+    const state = mapper.fromRows(data)
+    state.registrations[0]!.incomes[0]!.amount = 'R$ 8.000,00'
+    const updated = mapper.toRows(state, data, USER_A)
+    await createDeclarationRepository(db.client).save(USER_A, data, updated)
+
+    expect(db.state.sources[0]).toMatchObject({
+      decimo_terceiro_centavos: 43210,
+      irrf_13_centavos: 9876,
+      plr_centavos: 12345,
+    })
+  })
+
+  it('persists changes to fontes_esperadas without resetting it on unrelated saves', async () => {
+    const store = await connect()
+    fill(store)
+    await store.saveDraft()
+    const before = db.state
+    const after = structuredClone(before)
+    after.declaration!.fontes_esperadas = 3
+
+    await createDeclarationRepository(db.client).save(USER_A, before, after)
+    expect(db.state.declaration?.fontes_esperadas).toBe(3)
+  })
+
   it('saves a dependent and their incomes in one transaction and preserves the holder draft', async () => {
     const store = await connect()
+    const errors = captureExpectedErrors()
     fill(store)
     const fields = { ...emptyDependent(), apelido: 'Lia', teve_renda_propria: true }
     const incomes = [
@@ -235,12 +304,15 @@ describe('RF · persistence with a mocked Supabase client', () => {
     expect(db.rpc).toHaveBeenCalledTimes(1)
     expect(db.state.sources[0]!.dependente_id).toBe(db.state.dependents[0]!.id)
     expect(store.draftIncomes[0]!.amount).toBe('R$ 6.500,00')
+    expect(errors).toHaveBeenCalledTimes(1)
   })
 
   it('rejects unsafe monetary integers before invoking the RPC', async () => {
     const store = await connect()
+    const errors = captureExpectedErrors()
     fill(store, 'R$ 999.999.999.999.999,99')
     expect(await store.saveDraft()).toBe(false)
     expect(db.rpc).not.toHaveBeenCalled()
+    expect(errors).toHaveBeenCalledTimes(1)
   })
 })

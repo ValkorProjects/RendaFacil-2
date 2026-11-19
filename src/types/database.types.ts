@@ -1,5 +1,4 @@
-export type Json =
-  string | number | boolean | null | { [key: string]: Json | undefined } | Json[]
+export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[]
 
 export type Database = {
   public: {
@@ -11,7 +10,6 @@ export type Database = {
           criado_em: string
           fontes_esperadas: number
           id: string
-          pensao_mensal_centavos: number
           questionario_concluido: boolean
           questionario_etapa: string | null
           resultado_estimado_centavos: number | null
@@ -28,7 +26,6 @@ export type Database = {
           criado_em?: string
           fontes_esperadas?: number
           id?: string
-          pensao_mensal_centavos?: number
           questionario_concluido?: boolean
           questionario_etapa?: string | null
           resultado_estimado_centavos?: number | null
@@ -44,7 +41,6 @@ export type Database = {
           criado_em?: string
           fontes_esperadas?: number
           id?: string
-          pensao_mensal_centavos?: number
           questionario_concluido?: boolean
           questionario_etapa?: string | null
           resultado_estimado_centavos?: number | null
@@ -105,6 +101,8 @@ export type Database = {
           dependente_id: string | null
           descricao: string | null
           id: string
+          pensao_iniciou_em_2026: boolean
+          recebedor: string
           reembolso_centavos: number
           tipo: string
           user_id: string
@@ -120,6 +118,8 @@ export type Database = {
           dependente_id?: string | null
           descricao?: string | null
           id?: string
+          pensao_iniciou_em_2026?: boolean
+          recebedor?: string
           reembolso_centavos?: number
           tipo: string
           user_id: string
@@ -134,6 +134,8 @@ export type Database = {
           dependente_id?: string | null
           descricao?: string | null
           id?: string
+          pensao_iniciou_em_2026?: boolean
+          recebedor?: string
           reembolso_centavos?: number
           tipo?: string
           user_id?: string
@@ -288,10 +290,8 @@ export type Tables<
     }
     ? R
     : never
-  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema['Tables'] &
-        DefaultSchema['Views'])
-    ? (DefaultSchema['Tables'] &
-        DefaultSchema['Views'])[DefaultSchemaTableNameOrOptions] extends {
+  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema['Tables'] & DefaultSchema['Views'])
+    ? (DefaultSchema['Tables'] & DefaultSchema['Views'])[DefaultSchemaTableNameOrOptions] extends {
         Row: infer R
       }
       ? R
