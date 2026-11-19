@@ -1,31 +1,39 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
-import AppIcon, { type IconName } from '@/components/AppIcon.vue'
-
-// `name` is the route name from src/router/index.ts.
-const items: { name: string; label: string; icon: IconName }[] = [
-  { name: 'home', label: 'Home', icon: 'home' },
-  { name: 'income', label: '+Renda', icon: 'income' },
-  { name: 'user', label: 'User', icon: 'user' },
-  { name: 'settings', label: 'Settings', icon: 'settings' },
-  { name: 'info', label: 'Info', icon: 'info' },
-]
+import AppIcon from '@/components/AppIcon.vue'
+import { TABS, tabForRoute } from '@/router/tabs'
 
 const route = useRoute()
-const activeIndex = computed(() => items.findIndex((item) => item.name === route.name))
+const activeTab = computed(() => tabForRoute(route.name))
+const activeIndex = computed(() => TABS.findIndex((tab) => tab.id === activeTab.value))
 </script>
 
 <template>
   <nav
     class="nav-island glass"
-    aria-label="Main"
-    :style="{ '--count': items.length, '--index': activeIndex }"
+    aria-label="Navegação principal"
+    :style="{ '--count': TABS.length, '--index': activeIndex }"
   >
     <span v-if="activeIndex >= 0" class="nav-indicator" aria-hidden="true" />
-    <RouterLink v-for="item in items" :key="item.name" :to="{ name: item.name }" class="nav-item">
-      <AppIcon class="nav-icon" :name="item.icon" />
-      <span>{{ item.label }}</span>
+    <!-- `custom` so the tab stays marked on the screens opened from it (e.g. Minha conta → Menu). -->
+    <RouterLink
+      v-for="tab in TABS"
+      :key="tab.id"
+      v-slot="{ href, navigate }"
+      :to="{ name: tab.route }"
+      custom
+    >
+      <a
+        :href="href"
+        class="nav-item"
+        :class="{ active: tab.id === activeTab }"
+        :aria-current="tab.id === activeTab ? 'page' : undefined"
+        @click="navigate"
+      >
+        <AppIcon class="nav-icon" :name="tab.icon" />
+        <span class="nav-label">{{ tab.label }}</span>
+      </a>
     </RouterLink>
   </nav>
 </template>
@@ -53,7 +61,8 @@ const activeIndex = computed(() => items.findIndex((item) => item.name === route
   left: var(--pad);
   width: calc((100% - 2 * var(--pad)) / var(--count));
   border-radius: 999px;
-  background: var(--glass-bg-raised);
+  /* Opaque, so the accent label keeps 4.5:1 whatever scrolls behind the bar. */
+  background: var(--glass-bg-raised-solid);
   box-shadow:
     0 2px 10px rgb(0 0 0 / 0.08),
     inset 0 1px 0 var(--glass-highlight);
@@ -69,6 +78,7 @@ const activeIndex = computed(() => items.findIndex((item) => item.name === route
   align-items: center;
   justify-content: center;
   gap: 0.125rem;
+  min-width: 2.75rem;
   min-height: 3.25rem;
   border-radius: 999px;
   color: var(--color-text-muted);
@@ -85,7 +95,7 @@ const activeIndex = computed(() => items.findIndex((item) => item.name === route
   transform: scale(0.92);
 }
 
-.nav-item.router-link-active {
+.nav-item.active {
   color: var(--color-accent);
 }
 
@@ -98,11 +108,18 @@ const activeIndex = computed(() => items.findIndex((item) => item.name === route
   height: 1.5rem;
 }
 
+.nav-label {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* Desktop: wider island, icon and label side by side. */
 @media (min-width: 48rem) {
   .nav-island {
     bottom: 1.5rem;
-    width: min(calc(100% - 2rem), 34rem);
+    width: min(calc(100% - 2rem), 36rem);
   }
 
   .nav-item {

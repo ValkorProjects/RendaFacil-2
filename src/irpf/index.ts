@@ -27,5 +27,8 @@ export type {
   RegistroFonte,
 } from './entrada'
 
+export { calcularEfeitos, previaEfeito, reais } from './efeitos'
+export type { EfeitoDespesa, Efeitos, SituacaoEfeito, UsoEducacao } from './efeitos'
+
 export { PARAMETROS_2026, parametros } from './parametros'
 export type { FaixaInss, FaixaIr, ParametrosIrpf, RegraReducao } from './parametros'

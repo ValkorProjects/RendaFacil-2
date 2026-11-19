@@ -276,8 +276,8 @@ const resultado = calcularAjusteAnual({
 })
 ```
 
-- **Efeito de uma despesa (RF-07):** calcule o imposto devido com e sem a despesa. Cada cálculo escolhe o melhor modelo de novo.
-- **Texto "não deduz" (RF-13):** use `avaliarDespesa(despesa, dependentes)` e `TIPOS_DESPESA[tipo].rotulo`.
+- **Efeito de cada despesa (RF-07):** [`calcularEfeitos(dados)`](../src/irpf/efeitos.ts) devolve, para cada despesa, se ela deduz, quanto o imposto devido sobe sem ela, a parte da educação acima do limite e as mensagens da tela. Também devolve o efeito total e o uso do limite de educação por pessoa, para a barra. `previaEfeito(dados, rascunho)` faz a mesma conta para uma despesa ainda não salva, enquanto o valor é digitado. Cada cálculo escolhe o melhor modelo de novo, então os efeitos individuais não somam o total: no F5, 781,67 + 1.060,33 + 30,00 + 430,33 = 2.302,33, e o total é 2.356,67. O efeito total compara com a declaração sem saúde nem educação, mantendo a pensão; a pensão tem efeito individual, como as outras despesas. Quando uma pessoa tem mais de um recibo de educação acima do limite, os recibos consomem o limite na ordem da lista e o que passa dele cai nos últimos, de modo que a soma do que "não conta" é o excesso real da pessoa.
+- **Texto "não deduz" (RF-13):** as mensagens de `calcularEfeitos` já trazem o motivo. Para o formulário, `avaliarDespesa(despesa, dependentes)` e `TIPOS_DESPESA[tipo].rotulo` dão o mesmo motivo antes de salvar.
 - **Testes:** `npm test` roda os casos de referência do RF-08 (`src/irpf/__tests__/`), os da folha mensal e os testes ao lado do código (`*.test.ts`). O CI ([`.github/workflows/ci.yml`](../.github/workflows/ci.yml)) roda os testes, o lint, a formatação, o type-check e o build em todo PR para `dev` e `main`. Todo bug de cálculo encontrado vira um caso novo.
 
 ### 8.1 Estimativa parcial na tela de Rendas
@@ -299,7 +299,7 @@ Para uma fonte CLT, a tela compara o INSS e o IR retido digitados com a folha me
 
 Duas outras proteções, também sem bloquear: `inssCeilingWarning` avisa quando o INSS somado de todas as fontes passa do teto anual (12 × 988,09 = 11.857,08, critério do RF-12), o que acontece com mais de um empregador; e o cartão lista as categorias que não são CLT ("Tratado como salário: …"), porque aluguéis, autônomo/PJ e aposentadoria passam pelo motor como se fossem salário. Quem tem uma renda de PJ sem retenção, por exemplo, paga o carnê-leão mês a mês, e esse imposto ainda não é descontado da estimativa (seção 9).
 
-A conversão fica em `buildTaxInput`, em [`src/stores/income.ts`](../src/stores/income.ts). O botão "Calcular INSS e IR pelo salário" usa `calcularFolhaMensal` com os dependentes e a pensão do formulário. Todas as categorias de renda são tratadas como rendimento tributável; aluguéis, trabalho autônomo e aposentadoria têm regras próprias que ficam fora do MVP (seção 9), e o cartão da estimativa avisa isso.
+A conversão fica em `buildTaxInput`, em [`src/stores/income.ts`](../src/stores/income.ts). O botão "Calcular INSS e IR pelo salário" usa `calcularFolhaMensal` com os dependentes e a pensão informados na tela. Os dependentes e a pensão valem para a declaração inteira: são informados uma vez só e contam uma vez só, mesmo com várias fontes de renda. Todas as categorias de renda são tratadas como rendimento tributável; aluguéis, trabalho autônomo e aposentadoria têm regras próprias que ficam fora do MVP (seção 9), e o cartão da estimativa avisa isso.
 
 ## 9. Fora do escopo do MVP
 
