@@ -1,4 +1,4 @@
-import { computed, onScopeDispose, ref, shallowRef } from 'vue'
+import { computed, onScopeDispose, ref, shallowRef, watch } from 'vue'
 import { defineStore } from 'pinia'
 import type { Session } from '@supabase/supabase-js'
 import { getSupabase, isSupabaseConfigured } from '@/lib/supabase'
@@ -170,9 +170,21 @@ export const useAuthStore = defineStore('auth', () => {
     if (data?.deleted !== true) throw new Error('A exclusão não foi confirmada.')
     // A different account may have signed in through another tab while the request ran.
     if (user.value?.id !== accountId) return
+    if (accountId) income.forgetAccountData(accountId)
     await signOut()
     income.clearAccountData()
   }
+
+  // Carrega os dados da declaração guardados no navegador para a conta que entrou.
+  watch(
+    user,
+    (current) => {
+      if (current && !current.is_anonymous && income.storageOwner !== current.id) {
+        income.loadAccountData(current.id)
+      }
+    },
+    { immediate: true },
+  )
 
   return {
     session,

@@ -1,4 +1,4 @@
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
 import {
   calcularAjusteAnual,
@@ -393,7 +393,71 @@ export const useIncomeStore = defineStore('income', () => {
     draftEditingRegistrationId.value = null
   }
 
+  // Dados da declaração guardados no navegador, por conta, até a persistência no Supabase (RF-22,
+  // #36). Sem isso, recarregar a página apagava tudo. Só grava com uma conta carregada.
+  const storageOwner = ref<string | null>(null)
+  const storageKey = (userId: string) => `rendafacil:declaracao:${userId}`
+
+  const loadAccountData = (userId: string) => {
+    storageOwner.value = null
+    registrations.value = []
+    resetDraft()
+    hasDependents.value = false
+    dependents.value = []
+    expenses.value = []
+    try {
+      const raw = localStorage.getItem(storageKey(userId))
+      if (raw) {
+        const saved = JSON.parse(raw)
+        registrations.value = Array.isArray(saved.registrations) ? saved.registrations : []
+        dependents.value = Array.isArray(saved.dependents) ? saved.dependents : []
+        hasDependents.value = saved.hasDependents === true && dependents.value.length > 0
+        expenses.value = Array.isArray(saved.expenses) ? saved.expenses : []
+        if (Number.isInteger(saved.nextId) && saved.nextId > nextDraftId) nextDraftId = saved.nextId
+        if (Number.isInteger(saved.nextExpenseId) && saved.nextExpenseId > nextExpenseId) {
+          nextExpenseId = saved.nextExpenseId
+        }
+        resetDraft()
+      }
+    } catch {
+      // Armazenamento bloqueado ou corrompido: começa vazio.
+    }
+    storageOwner.value = userId
+  }
+
+  const forgetAccountData = (userId: string) => {
+    try {
+      localStorage.removeItem(storageKey(userId))
+    } catch {
+      // Nada a apagar.
+    }
+  }
+
+  watch(
+    [registrations, hasDependents, dependents, expenses],
+    () => {
+      if (!storageOwner.value) return
+      try {
+        localStorage.setItem(
+          storageKey(storageOwner.value),
+          JSON.stringify({
+            registrations: registrations.value,
+            hasDependents: hasDependents.value,
+            dependents: dependents.value,
+            expenses: expenses.value,
+            nextId: nextDraftId,
+            nextExpenseId,
+          }),
+        )
+      } catch {
+        // Armazenamento cheio ou bloqueado: os dados seguem na memória.
+      }
+    },
+    { deep: true },
+  )
+
   const clearAccountData = () => {
+    storageOwner.value = null
     registrations.value = []
     expenses.value = []
     resetDraft()
@@ -543,5 +607,8 @@ export const useIncomeStore = defineStore('income', () => {
     removeDraftIncome,
     saveDraft,
     clearAccountData,
+    loadAccountData,
+    forgetAccountData,
+    storageOwner,
   }
 })

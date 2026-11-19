@@ -19,12 +19,11 @@ const items: { route: string; label: string; description: string; icon: IconName
     icon: 'privacy',
   },
   {
-    route: 'settings',
-    label: 'Configurações',
-    description: 'Preferências do app',
-    icon: 'settings',
+    route: 'info',
+    label: 'Sobre a estimativa',
+    description: 'Premissas, limites e fontes oficiais',
+    icon: 'info',
   },
-  { route: 'info', label: 'Sobre o app', description: 'Versão e instalação', icon: 'info' },
 ]
 </script>
 
