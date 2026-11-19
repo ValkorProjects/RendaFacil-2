@@ -16,6 +16,8 @@ import { cents, formatCurrency, formatMoneyInput } from '@/utils/currency'
 import { dependentError, type DependentFields, type RegisteredDependent } from '@/utils/dependents'
 export type { RegisteredDependent } from '@/utils/dependents'
 
+// The income screen takes monthly amounts, as on the payslip, so the declaration can be built up
+// during the year; the engine gets 12 times each one. 13º and PLR are yearly and stay outside it.
 const MONTHS_PER_YEAR = 12
 const annualize = (amountInCents: number) => amountInCents * MONTHS_PER_YEAR
 
@@ -35,15 +37,23 @@ export interface RegisteredExpense extends RegistroDespesa {
   pensaoIniciouEm2026: boolean
 }
 
+// One income source with its monthly figures (the informe's yearly ones ÷ 12).
 export interface RegisteredIncomeEntry {
   id: number
   category: IncomeCategory
+  // Monthly income (informe: quadro 3, linha 01 ÷ 12).
   amount: string
   // INSS and income tax withheld from `amount` each month (payslip, or the annual statement ÷ 12)
   inss: string
   irrf: string
   // Missing on older session entries means the holder.
   dependentId?: number | null
+  // Quadro 1: the company's name.
+  employer?: string
+  // Quadro 5, yearly amounts: exclusive taxation, kept and shown but outside the adjustment.
+  thirteenth?: string // linha 01, 13º salário
+  thirteenthIrrf?: string // linha 02, IRRF sobre o 13º
+  profitSharing?: string // linha 03 ("Outros"), PLR
 }
 
 // One "Adicionar" on the income screen: the income sources typed together.
@@ -74,7 +84,19 @@ const newIncomeEntry = (id: number): RegisteredIncomeEntry => ({
   inss: '',
   irrf: '',
   dependentId: null,
+  employer: '',
+  thirteenth: '',
+  thirteenthIrrf: '',
+  profitSharing: '',
 })
+
+// The company that pays the source (quadro 1 of the informe), or the category without one.
+export const sourceTitle = (entry: RegisteredIncomeEntry) =>
+  entry.employer?.trim() || incomeCategoryLabels[entry.category]
+
+// The yearly 13º and PLR (quadro 5 of the informe), which don't enter the adjustment.
+export const exclusiveTaxation = (entry: RegisteredIncomeEntry) =>
+  cents(entry.thirteenth ?? '') + cents(entry.profitSharing ?? '')
 
 // RF-12: nothing can be withheld beyond the income it was withheld from.
 export const incomeEntryError = (entry: RegisteredIncomeEntry) => {
@@ -84,6 +106,9 @@ export const incomeEntryError = (entry: RegisteredIncomeEntry) => {
   }
   if (cents(entry.inss) > amount) return 'O INSS não pode ser maior que o valor mensal.'
   if (cents(entry.irrf) > amount) return 'O IR retido não pode ser maior que o valor mensal.'
+  if (cents(entry.thirteenthIrrf ?? '') > cents(entry.thirteenth ?? '')) {
+    return 'O IR sobre o 13º não pode ser maior que o 13º salário.'
+  }
   return ''
 }
 
@@ -168,7 +193,10 @@ export const inssCeilingWarning = (registrations: readonly IncomeRegistration[])
 // One row per income source for the monthly view of the estimate card.
 export interface PayrollRow {
   id: string
+  // The income category, for notes about what the engine treats as salary.
   label: string
+  // What names the source on screen: the company, or the category when it has none.
+  title: string
   informado: { bruto: number; inss: number; irrf: number }
   dependentes: number
   deducaoDependentes: number
@@ -194,6 +222,7 @@ export const buildPayrollRows = (
         return {
           id: `${registration.id}-${income.id}`,
           label: incomeCategoryLabels[income.category],
+          title: sourceTitle(income),
           informado: {
             bruto: cents(income.amount),
             inss: cents(income.inss),
@@ -288,6 +317,61 @@ const expenseError = (
   return ''
 }
 
+// RF-12: the companies that paid the holder a salary (CLT or pró-labore), for "Quantas empresas te
+// pagaram salário em 2026?". Rent, freelance work and pensions don't count as companies.
+const SALARY_CATEGORIES: readonly IncomeCategory[] = ['clt', 'proLabore']
+export const holderStatementCount = (registrations: readonly IncomeRegistration[]) =>
+  registrations
+    .flatMap((registration) => registration.incomes)
+    .filter(
+      (income) =>
+        income.dependentId == null &&
+        SALARY_CATEGORIES.includes(income.category) &&
+        cents(income.amount) > 0,
+    ).length
+
+// RF-14: why the estimate is still provisional, one sentence per reason, for the status on the
+// Home. Each dependent with income of their own needs their statement; income that isn't salary
+// goes through the engine as if it were (its own rules are outside the MVP).
+export const pendingReasons = (
+  registrations: readonly IncomeRegistration[],
+  household: Household,
+  expectedStatements = 0,
+): string[] => {
+  const missing = expectedStatements - holderStatementCount(registrations)
+  const reasons =
+    missing > 0
+      ? [
+          missing === 1
+            ? 'Falta lançar 1 empresa que pagou salário.'
+            : `Falta lançar ${missing} empresas que pagaram salário.`,
+        ]
+      : []
+  reasons.push(
+    ...pendingDependentStatements(registrations, household).map(
+      (dependent) => `Falta o informe de rendimentos de ${dependent.apelido}.`,
+    ),
+  )
+  const notSalary = [
+    ...new Set(
+      registrations
+        .flatMap((registration) => registration.incomes)
+        .filter(
+          (income) =>
+            cents(income.amount) > 0 &&
+            isIncludedIncome(income, household) &&
+            income.category !== 'clt' &&
+            income.category !== 'pensaoAlimenticia',
+        )
+        .map((income) => incomeCategoryLabels[income.category]),
+    ),
+  ]
+  if (notSalary.length) {
+    reasons.push(`O resultado considera só salários. Você lançou: ${notSalary.join(', ')}.`)
+  }
+  return reasons
+}
+
 // No estimate without income. The engine rejects values it can't calculate exactly (for
 // example, amounts too large for integer cents) instead of returning a wrong number.
 export const estimateTax = (
@@ -343,6 +427,9 @@ export const useIncomeStore = defineStore('income', () => {
 
   const removeRegistration = (id: number) => {
     registrations.value = registrations.value.filter((registration) => registration.id !== id)
+    // The lançamento being edited is gone: leave edit mode, or "Salvar alterações" would bring it
+    // back.
+    if (draftEditingRegistrationId.value === id) resetDraft()
   }
 
   const updateRegistration = (registration: IncomeRegistration) => {
@@ -500,7 +587,16 @@ export const useIncomeStore = defineStore('income', () => {
     resetDraft()
     dependents.value = []
     expenses.value = []
+    expectedStatements.value = 1
   }
+
+  // RF-12: how many companies paid the holder a salary ("Quantas empresas te pagaram salário em
+  // 2026?", `declaracoes.fontes_esperadas`). Editable; missing ones keep the estimate provisional.
+  const expectedStatements = ref(1)
+  const setExpectedStatements = (count: number) => {
+    expectedStatements.value = Math.max(0, Math.min(20, Math.floor(Number(count) || 0)))
+  }
+  const statementCount = computed(() => holderStatementCount(registrations.value))
 
   const saveDraft = () => {
     if (!canSaveDraft.value) return false
@@ -538,7 +634,7 @@ export const useIncomeStore = defineStore('income', () => {
   const items = computed(() =>
     includedIncomes.value.map((income) => ({
       id: 'income-' + income.id,
-      label: incomeCategoryLabels[income.category] + ' · ' + incomeOwner(income),
+      label: sourceTitle(income) + ' · ' + incomeOwner(income),
       amount: String(annualize(cents(income.amount))),
       icon: 'income' as const,
     })),
@@ -557,7 +653,29 @@ export const useIncomeStore = defineStore('income', () => {
         .reduce((total, income) => total + cents(income.amount), 0),
     ),
   )
-  const summaryTaxableTotal = computed(() => taxableTotal.value + draftTaxableTotal.value)
+  // RF-12: 13º and PLR are kept and shown, but they don't enter the adjustment.
+  const exclusiveTaxationTotal = computed(() =>
+    includedIncomes.value.reduce((total, income) => total + exclusiveTaxation(income), 0),
+  )
+  // While a saved lançamento is open for editing, the form holds its copy: leave the saved one out
+  // of the summary, or the total, the estimate and the INSS ceiling would count it twice.
+  const savedWithoutEdited = computed(() =>
+    registrations.value.filter(
+      (registration) => registration.id !== draftEditingRegistrationId.value,
+    ),
+  )
+  const savedTaxableTotal = computed(() =>
+    annualize(
+      savedWithoutEdited.value
+        .flatMap((registration) => registration.incomes)
+        .filter(
+          (income) =>
+            isIncludedIncome(income, household.value) && income.category !== 'pensaoAlimenticia',
+        )
+        .reduce((total, income) => total + cents(income.amount), 0),
+    ),
+  )
+  const summaryTaxableTotal = computed(() => savedTaxableTotal.value + draftTaxableTotal.value)
   const dependentCount = computed(() => validDependents(household.value).length)
   const pendingDependents = computed(() =>
     pendingDependentStatements(registrations.value, household.value),
@@ -569,6 +687,11 @@ export const useIncomeStore = defineStore('income', () => {
   }))
 
   const taxEstimate = computed(() => estimateTax(registrations.value, household.value))
+  // The Home shows what is saved: the payslip rows and the pending reasons of the saved data.
+  const payroll = computed(() => buildPayrollRows(registrations.value, household.value))
+  const estimateStatus = computed(() =>
+    pendingReasons(registrations.value, household.value, expectedStatements.value),
+  )
   // RF-07: the effect of each saved expense, in the order of `expenses`.
   const declarationData = computed(() => buildDeclarationData(registrations.value, household.value))
   // Null when the engine refuses the values: the estimate card already says why.
@@ -580,7 +703,7 @@ export const useIncomeStore = defineStore('income', () => {
     }
   })
   const summaryInssWarning = computed(() => {
-    const incomes = [...registrations.value, draftRegistration.value].flatMap((registration) =>
+    const incomes = [...savedWithoutEdited.value, draftRegistration.value].flatMap((registration) =>
       registration.incomes.filter((income) => isIncludedIncome(income, household.value)),
     )
     // The social-security ceiling belongs to each person, not the household.
@@ -599,10 +722,13 @@ export const useIncomeStore = defineStore('income', () => {
       .join(' ')
   })
   const summaryPayroll = computed(() =>
-    buildPayrollRows([...registrations.value, draftRegistration.value], household.value),
+    buildPayrollRows([...savedWithoutEdited.value, draftRegistration.value], household.value),
   )
   const summaryTaxEstimate = computed(() => {
-    const estimate = estimateTax([...registrations.value, draftRegistration.value], household.value)
+    const estimate = estimateTax(
+      [...savedWithoutEdited.value, draftRegistration.value],
+      household.value,
+    )
     // Typing a statement does not resolve the pending state until it is saved.
     if (estimate?.ok) estimate.provisional = pendingDependents.value.length > 0
     return estimate
@@ -613,9 +739,15 @@ export const useIncomeStore = defineStore('income', () => {
     items,
     taxableTotal,
     exemptTotal,
+    exclusiveTaxationTotal,
+    expectedStatements,
+    setExpectedStatements,
+    statementCount,
     summaryTaxableTotal,
     dependentCount,
     taxEstimate,
+    payroll,
+    estimateStatus,
     summaryTaxEstimate,
     summaryPayroll,
     summaryInssWarning,
@@ -623,6 +755,7 @@ export const useIncomeStore = defineStore('income', () => {
     removeRegistration,
     updateRegistration,
     beginEditRegistration,
+    cancelEdit: resetDraft,
     hasDependents,
     dependents,
     household,
@@ -640,6 +773,7 @@ export const useIncomeStore = defineStore('income', () => {
     pendingDependents,
     incomeOwner,
     draftIncomes,
+    draftEditingRegistrationId,
     draftTaxableTotal,
     canSaveDraft,
     addDraftIncome,

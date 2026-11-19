@@ -50,17 +50,19 @@ O resultado é uma **estimativa**. O que vale é a declaração entregue à Rece
 
 Em desenvolvimento, rumo ao MVP. As funcionalidades estão organizadas em issues com o prefixo `RF-` no [GitHub](https://github.com/ValkorProjects/RendaFacil-2/issues).
 
-| Pronto                                                                                   | Em andamento ou planejado                                    |
-| ---------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
-| Motor de cálculo do ajuste anual e da folha mensal, com testes de casos de referência    | Questionário inicial com triagem                             |
-| Parâmetros fiscais de 2026                                                               | Persistência das rendas, dependentes e despesas no Supabase  |
-| Estrutura do banco e políticas RLS definidas em [`supabase/`](supabase/)                 | Tela final de Rendas                                         |
-| Tela de Rendas com estimativa do imposto (dados ainda só em memória)                     | Home com o resultado e o detalhe do cálculo                  |
-| Cadastro, login, perfil, consentimento e política de privacidade                         | Publicação da Edge Function de exclusão e deploy de produção |
-| Documentação do cálculo                                                                  |                                                              |
-| Layout base: saudação, barra inferior (Home, Rendas, Despesas, Menu)                     |                                                              |
-| Cadastro de dependentes em `/dependentes`, com acesso pelo Menu e questionário de Rendas |                                                              |
-| Tela de Despesas com cadastro, efeito de cada despesa e barra do limite de educação      |                                                              |
+| Pronto                                                                                              | Em andamento ou planejado                                    |
+| --------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| Motor de cálculo do ajuste anual e da folha mensal, com testes de casos de referência               | Questionário inicial com triagem                             |
+| Parâmetros fiscais de 2026                                                                          | Persistência das rendas, dependentes e despesas no Supabase  |
+| Estrutura do banco e políticas RLS definidas em [`supabase/`](supabase/)                            | Publicação da Edge Function de exclusão e deploy de produção |
+| Tela de Rendas por valores mensais, com contador de empresas, 13º e PLR (dados ainda só em memória) |                                                              |
+| Home com o resultado, o status da estimativa e o detalhe do cálculo                                 |                                                              |
+| Menu: dependentes, minha conta, sobre a estimativa, privacidade, sair e excluir conta               |                                                              |
+| Cadastro, login, perfil, consentimento e política de privacidade                                    |                                                              |
+| Documentação do cálculo                                                                             |                                                              |
+| Layout base: saudação, barra inferior (Home, Rendas, Despesas, Menu)                                |                                                              |
+| Cadastro de dependentes em `/dependentes`, com acesso pelo Menu e questionário de Rendas            |                                                              |
+| Tela de Despesas com cadastro, efeito de cada despesa e barra do limite de educação                 |                                                              |
 
 O cadastro de dependentes guarda apenas apelido, relação, presença em outra declaração e renda
 própria em 2026. Dependentes em outra declaração, suas rendas e despesas ficam fora do cálculo.

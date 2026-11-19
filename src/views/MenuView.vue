@@ -1,45 +1,78 @@
 <script setup lang="ts">
-import { RouterLink } from 'vue-router'
+import { ref } from 'vue'
+import { RouterLink, useRouter, type RouteLocationRaw } from 'vue-router'
 import AppIcon, { type IconName } from '@/components/AppIcon.vue'
 import PageCard from '@/components/PageCard.vue'
+import { useAuthStore } from '@/stores/auth'
 
-// The screens that left the bottom bar when it went to four tabs. RF-15 (#16) completes this list
-// (dependentes, sobre a estimativa, sair, excluir conta).
-const items: { route: string; label: string; description: string; icon: IconName }[] = [
+// RF-15: dependentes, minha conta, sobre a estimativa, política de privacidade, sair e excluir
+// conta. Excluir abre Minha conta já com a confirmação na tela (RF-04).
+const items: {
+  to: RouteLocationRaw
+  label: string
+  description: string
+  icon: IconName
+  danger?: boolean
+}[] = [
   {
-    route: 'dependents',
+    to: { name: 'dependents' },
     label: 'Dependentes',
     description: 'Cadastros, rendimentos e vínculos com despesas',
     icon: 'user',
   },
   {
-    route: 'user',
+    to: { name: 'user' },
     label: 'Minha conta',
-    description: 'Dados pessoais, senha e exclusão da conta',
+    description: 'E-mail, senha e confirmação do e-mail',
     icon: 'user',
   },
   {
-    route: 'privacy',
+    to: { name: 'info' },
+    label: 'Sobre a estimativa',
+    description: 'Premissas, o que fica de fora e fontes oficiais',
+    icon: 'info',
+  },
+  {
+    to: { name: 'privacy' },
     label: 'Política de privacidade',
     description: 'Como seus dados são usados',
     icon: 'privacy',
   },
   {
-    route: 'settings',
-    label: 'Configurações',
-    description: 'Preferências do app',
-    icon: 'settings',
+    to: { name: 'user', query: { acao: 'excluir' } },
+    label: 'Excluir conta',
+    description: 'Apaga a conta e todos os dados, com confirmação',
+    icon: 'trash',
+    danger: true,
   },
-  { route: 'info', label: 'Sobre o app', description: 'Versão e instalação', icon: 'info' },
 ]
+
+const auth = useAuthStore()
+const router = useRouter()
+const signingOut = ref(false)
+const signOutError = ref('')
+
+async function signOut() {
+  if (signingOut.value) return
+  signingOut.value = true
+  signOutError.value = ''
+  try {
+    await auth.signOut()
+    await router.push({ name: 'user' })
+  } catch {
+    signOutError.value = 'Não foi possível sair. Tente de novo.'
+  } finally {
+    signingOut.value = false
+  }
+}
 </script>
 
 <template>
   <PageCard class="menu-page" eyebrow="RendaFacil" title="Menu">
     <nav aria-label="Menu">
       <ul class="menu-list">
-        <li v-for="item in items" :key="item.route">
-          <RouterLink :to="{ name: item.route }" class="menu-item">
+        <li v-for="item in items" :key="item.label">
+          <RouterLink :to="item.to" class="menu-item" :class="{ danger: item.danger }">
             <AppIcon :name="item.icon" class="menu-icon" />
             <span class="menu-text">
               <span class="menu-label">{{ item.label }}</span>
@@ -48,7 +81,17 @@ const items: { route: string; label: string; description: string; icon: IconName
             <span class="menu-chevron" aria-hidden="true">›</span>
           </RouterLink>
         </li>
+        <li>
+          <button type="button" class="menu-item" :disabled="signingOut" @click="signOut">
+            <AppIcon name="logout" class="menu-icon" />
+            <span class="menu-text">
+              <span class="menu-label">Sair</span>
+              <span class="menu-description">Encerra a sessão neste aparelho</span>
+            </span>
+          </button>
+        </li>
       </ul>
+      <p v-if="signOutError" class="menu-error" role="alert">{{ signOutError }}</p>
     </nav>
   </PageCard>
 </template>
@@ -78,6 +121,25 @@ const items: { route: string; label: string; description: string; icon: IconName
   color: var(--color-text);
   text-decoration: none;
   transition: transform 150ms ease;
+}
+
+button.menu-item {
+  width: 100%;
+  border: 0;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.menu-error {
+  margin-top: 0.5rem;
+  color: var(--color-danger);
+}
+
+/* A destructive item: the icon and the label in the danger colour, so it reads apart from Sair. */
+.menu-item.danger .menu-icon,
+.menu-item.danger .menu-label {
+  color: var(--color-danger);
 }
 
 .menu-item:active {
