@@ -76,21 +76,26 @@ const otherModel = computed(() =>
         v-for="row in payroll"
         :key="row.id"
         class="payroll-row"
-        :aria-label="`Folha mensal: ${row.label}`"
+        :aria-label="`Folha mensal: ${row.title}`"
       >
-        <h3>{{ row.label }}</h3>
+        <h3>{{ row.title }}</h3>
         <p v-if="!row.folha" class="line">
           Sem cálculo mensal para esta categoria: ela tem regras próprias, que ficam fora do MVP.
           Vale o que foi informado (INSS {{ formatCurrency(row.informado.inss) }}, IR retido
           {{ formatCurrency(row.informado.irrf) }}).
         </p>
         <template v-else>
-          <div class="table-scroll">
+          <div
+            class="table-scroll"
+            tabindex="0"
+            role="region"
+            :aria-label="`Cálculo da folha mensal de ${row.title}`"
+          >
             <table>
               <caption class="sr-only">
                 Cálculo da folha mensal de
                 {{
-                  row.label
+                  row.title
                 }}
               </caption>
               <thead>
@@ -195,7 +200,12 @@ const otherModel = computed(() =>
 
       <details class="calculation">
         <summary>Ver o cálculo</summary>
-        <div class="table-scroll">
+        <div
+          class="table-scroll"
+          tabindex="0"
+          role="region"
+          aria-label="Cálculo do imposto nos dois modelos"
+        >
           <table>
             <caption class="sr-only">
               Cálculo do imposto nos dois modelos
@@ -315,6 +325,8 @@ const otherModel = computed(() =>
 <style scoped>
 .tax-estimate {
   display: grid;
+  /* A plain `auto` column is as wide as the table, which pushed the page sideways at 360 px. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.5rem;
   padding: 1.25rem;
   border-radius: 1.25rem;

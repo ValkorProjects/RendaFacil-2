@@ -12,7 +12,9 @@ import {
   incomeCategoryLabels,
   incomeEntryError,
   incomeEntryWarnings,
+  sourceTitle,
   type IncomeCategory,
+  type IncomeRegistration,
   type RegisteredIncomeEntry,
   useIncomeStore,
 } from '@/stores/income'
@@ -39,8 +41,12 @@ const fillFromSalary = (id: number) => {
   salaryErrors.value[id] = incomeStore.fillDraftIncomeFromSalary(id)
 }
 
-const sourceName = (income: RegisteredIncomeEntry) =>
-  income.employer?.trim() || incomeCategoryLabels[income.category]
+// "Empresa A e Empresa B": the sources a lançamento holds, for its delete confirmation.
+const sourceList = (registration: IncomeRegistration) => {
+  const names = registration.incomes.map(sourceTitle)
+  const last = names[names.length - 1] ?? ''
+  return names.length > 1 ? `${names.slice(0, -1).join(', ')} e ${last}` : last
+}
 
 const setConfirmingDelete = (registrationId: number, open: boolean) => {
   if (open) confirmingDeleteId.value = registrationId
@@ -52,14 +58,26 @@ const goToForm = async () => {
   document.getElementById('income-title')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 
-// Editing loads the saved informe into the form, with every field.
+// Editing loads the saved lançamento into the form, with every field.
 const startEdit = (registrationId: number) => {
   confirmingDeleteId.value = null
   if (incomeStore.beginEditRegistration(registrationId)) void goToForm()
 }
 
+// "Lançar rendimento" starts a new one: leave edit mode first, or saving would overwrite the
+// lançamento that was open.
+const newIncome = async () => {
+  if (isEditing.value) incomeStore.cancelEdit()
+  await goToForm()
+}
+
 const updateExpected = (event: Event) => {
   incomeStore.setExpectedStatements(Number((event.target as HTMLInputElement).value))
+}
+
+// The store keeps the number between 0 and 20: show the one it kept ("25" typed at 20 stays 20).
+const syncExpected = (event: Event) => {
+  ;(event.target as HTMLInputElement).value = String(incomeStore.expectedStatements)
 }
 
 const saveIncome = () => {
@@ -73,21 +91,22 @@ const saveIncome = () => {
   <div class="income-page">
     <PageCard eyebrow="Declaração de 2027 · ano-calendário 2026" title="Rendas">
       <p class="intro">
-        Lance os números do informe de rendimentos que cada empresa entrega até o fim de fevereiro,
-        com o ano de 2026 fechado. Férias e hora extra já estão no total do quadro 3, linha 01.
+        Informe os valores mensais de cada fonte, como estão no holerite, e acompanhe a estimativa
+        ao longo do ano: ela conta 12 meses iguais e muda enquanto você digita. Quando o informe de
+        rendimentos chegar, use os valores do ano divididos por 12.
       </p>
 
       <section class="statements-summary glass" aria-labelledby="statements-title">
         <div class="section-heading">
           <div>
-            <p class="section-kicker">Informes</p>
-            <h2 id="statements-title">Total dos rendimentos</h2>
+            <p class="section-kicker">Total</p>
+            <h2 id="statements-title">Rendimentos no ano</h2>
           </div>
           <strong class="statements-total">{{ formatCurrency(incomeStore.taxableTotal) }}</strong>
         </div>
         <p class="statements-counter" role="status">
           {{ incomeStore.statementCount }} de {{ incomeStore.expectedStatements }}
-          {{ incomeStore.expectedStatements === 1 ? 'informe lançado' : 'informes lançados' }}
+          {{ incomeStore.expectedStatements === 1 ? 'empresa lançada' : 'empresas lançadas' }}
         </p>
         <label class="field-label" for="expected-statements">
           Quantas empresas te pagaram salário em 2026?
@@ -101,10 +120,11 @@ const saveIncome = () => {
           max="20"
           inputmode="numeric"
           @input="updateExpected"
+          @change="syncExpected"
         />
-        <button class="add-button" type="button" @click="goToForm">
+        <button class="add-button" type="button" @click="newIncome">
           <span aria-hidden="true">+</span>
-          Lançar informe
+          Lançar rendimento
         </button>
       </section>
 
@@ -133,19 +153,19 @@ const saveIncome = () => {
               class="saved-income source-card"
             >
               <div class="entry-topline">
-                <strong class="source-name">{{ sourceName(income) }}</strong>
+                <strong class="source-name">{{ sourceTitle(income) }}</strong>
                 <span class="source-owner">{{ incomeStore.incomeOwner(income) }}</span>
               </div>
               <div class="saved-entry">
-                <span>Rendimentos</span>
+                <span>Rendimento mensal</span>
                 <strong>{{ formatCurrency(cents(income.amount)) }}</strong>
               </div>
               <div class="saved-entry saved-entry-detail">
-                <span>INSS</span>
+                <span>INSS no mês</span>
                 <strong>{{ formatCurrency(cents(income.inss)) }}</strong>
               </div>
               <div class="saved-entry saved-entry-detail">
-                <span>IR retido</span>
+                <span>IR retido no mês</span>
                 <strong>{{ formatCurrency(cents(income.irrf)) }}</strong>
               </div>
               <p v-if="exclusiveTaxation(income)" class="exclusive-note">
@@ -160,7 +180,7 @@ const saveIncome = () => {
                 <template v-if="cents(income.profitSharing ?? '')">
                   PLR {{ formatCurrency(cents(income.profitSharing ?? '')) }}
                 </template>
-                — não entram no ajuste
+                — valores do ano, não entram no ajuste
               </p>
             </div>
             <div
@@ -171,25 +191,25 @@ const saveIncome = () => {
                 v-if="confirmingDeleteId !== registration.id"
                 class="edit-button"
                 type="button"
-                :aria-label="`Editar informe ${registrationIndex + 1}`"
+                :aria-label="`Editar lançamento ${registrationIndex + 1}`"
                 @click="startEdit(registration.id)"
               >
                 Editar
               </button>
               <ConfirmDelete
                 :open="confirmingDeleteId === registration.id"
-                :item-label="`o informe ${registrationIndex + 1}`"
+                :item-label="`o lançamento ${registrationIndex + 1}`"
                 @update:open="setConfirmingDelete(registration.id, $event)"
                 @confirm="incomeStore.removeRegistration(registration.id)"
               >
-                <p>Os rendimentos deste informe saem da estimativa.</p>
+                <p>Saem da estimativa: {{ sourceList(registration) }}.</p>
               </ConfirmDelete>
             </div>
           </article>
         </div>
         <p v-if="incomeStore.exclusiveTaxationTotal" class="field-help">
-          13º e PLR somam {{ formatCurrency(incomeStore.exclusiveTaxationTotal) }} e não entram no
-          ajuste: têm tributação exclusiva na fonte.
+          13º e PLR somam {{ formatCurrency(incomeStore.exclusiveTaxationTotal) }} no ano e não
+          entram no ajuste: têm tributação exclusiva na fonte.
         </p>
       </section>
 
@@ -198,10 +218,10 @@ const saveIncome = () => {
           <div>
             <p class="section-kicker">{{ isEditing ? 'Editando' : 'Novo' }}</p>
             <h2 id="income-title">
-              {{ isEditing ? 'Editar informe de rendimentos' : 'Lançar informe de rendimentos' }}
+              {{ isEditing ? 'Editar lançamento' : 'Lançar rendimento' }}
             </h2>
           </div>
-          <span class="section-status">Valores do ano</span>
+          <span class="section-status">Valores mensais</span>
         </div>
 
         <div class="entry-list">
@@ -223,7 +243,7 @@ const saveIncome = () => {
               </button>
             </div>
             <label class="field-label" :for="`income-employer-${income.id}`">
-              Nome da empresa <small class="informe-ref">Quadro 1</small>
+              Nome da empresa <small class="informe-ref">Informe: quadro 1</small>
             </label>
             <input
               :id="`income-employer-${income.id}`"
@@ -267,8 +287,8 @@ const saveIncome = () => {
               </option>
             </select>
             <label class="field-label" :for="`income-amount-${income.id}`">
-              Total dos rendimentos (inclusive férias)
-              <small class="informe-ref">Quadro 3, linha 01</small>
+              Valor mensal
+              <small class="informe-ref">Informe: quadro 3, linha 01 ÷ 12</small>
             </label>
             <Money3Component
               :id="`income-amount-${income.id}`"
@@ -281,8 +301,8 @@ const saveIncome = () => {
             <div class="withheld-grid">
               <div>
                 <label class="field-label" :for="`income-inss-${income.id}`">
-                  Contribuição previdenciária oficial
-                  <small class="informe-ref">Quadro 3, linha 02</small>
+                  INSS descontado no mês
+                  <small class="informe-ref">Informe: quadro 3, linha 02 ÷ 12</small>
                 </label>
                 <Money3Component
                   :id="`income-inss-${income.id}`"
@@ -295,8 +315,8 @@ const saveIncome = () => {
               </div>
               <div>
                 <label class="field-label" :for="`income-irrf-${income.id}`">
-                  Imposto sobre a renda retido na fonte
-                  <small class="informe-ref">Quadro 3, linha 05</small>
+                  IR retido na fonte no mês
+                  <small class="informe-ref">Informe: quadro 3, linha 05 ÷ 12</small>
                 </label>
                 <Money3Component
                   :id="`income-irrf-${income.id}`"
@@ -318,8 +338,8 @@ const saveIncome = () => {
                 Calcular INSS e IR pelo salário
               </button>
               <p class="field-help">
-                Sem o informe em mãos: supõe o mesmo salário todos os meses (o total ÷ 12) e
-                considera os dependentes. Quando o informe chegar, use os números dele.
+                Supõe o mesmo salário todos os meses e considera os dependentes. A pensão paga é
+                lançada em Despesas e entra no ajuste da declaração, não nesta simulação mensal.
               </p>
             </template>
             <p v-if="salaryErrors[income.id]" class="field-error" role="alert">
@@ -328,12 +348,12 @@ const saveIncome = () => {
 
             <fieldset class="exclusive-fields">
               <legend>
-                Tributação exclusiva <small class="informe-ref">não entra no ajuste</small>
+                13º e PLR <small class="informe-ref">valores do ano, não entram no ajuste</small>
               </legend>
               <div class="withheld-grid">
                 <div>
                   <label class="field-label" :for="`income-thirteenth-${income.id}`">
-                    13º salário <small class="informe-ref">Quadro 5, linha 01</small>
+                    13º salário <small class="informe-ref">Informe: quadro 5, linha 01</small>
                   </label>
                   <Money3Component
                     :id="`income-thirteenth-${income.id}`"
@@ -347,7 +367,7 @@ const saveIncome = () => {
                 </div>
                 <div>
                   <label class="field-label" :for="`income-thirteenth-irrf-${income.id}`">
-                    IRRF sobre o 13º <small class="informe-ref">Quadro 5, linha 02</small>
+                    IRRF sobre o 13º <small class="informe-ref">Informe: quadro 5, linha 02</small>
                   </label>
                   <Money3Component
                     :id="`income-thirteenth-irrf-${income.id}`"
@@ -361,7 +381,8 @@ const saveIncome = () => {
                 </div>
               </div>
               <label class="field-label" :for="`income-plr-${income.id}`">
-                PLR, se houver <small class="informe-ref">Quadro 5, linha 03 ("Outros")</small>
+                PLR, se houver
+                <small class="informe-ref">Informe: quadro 5, linha 03 ("Outros")</small>
               </label>
               <Money3Component
                 :id="`income-plr-${income.id}`"
@@ -389,9 +410,9 @@ const saveIncome = () => {
         </div>
 
         <p class="field-help">
-          A pensão alimentícia descontada em folha (quadro 3, linha 04) e o plano de saúde
-          descontado em folha (em geral no quadro 7) são lançados em
-          <RouterLink :to="{ name: 'deductions' }">Despesas</RouterLink>, uma vez só.
+          A pensão alimentícia e o plano de saúde descontados em folha (no informe, quadro 3, linha
+          04, e quadro 7) vão em <RouterLink :to="{ name: 'deductions' }">Despesas</RouterLink>, a
+          cada pagamento, e não aqui.
         </p>
 
         <p v-if="incomeStore.summaryInssWarning" class="field-warning" role="status">
@@ -467,6 +488,14 @@ const saveIncome = () => {
         @click="saveIncome"
       >
         {{ isEditing ? 'Salvar alterações' : 'Adicionar' }}
+      </button>
+      <button
+        v-if="isEditing"
+        class="button secondary add-registration-button"
+        type="button"
+        @click="incomeStore.cancelEdit"
+      >
+        Cancelar edição
       </button>
     </PageCard>
   </div>

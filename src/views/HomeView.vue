@@ -39,11 +39,9 @@ const toggleIncomeSummary = () => {
         v-if="!incomeStore.registrations.length"
         icon="income"
         title="Nenhum rendimento lançado"
-        text="Lance o informe de rendimentos de cada empresa para ver se você vai restituir ou pagar imposto."
+        text="Lance o que você recebe por mês em cada fonte para ver se vai restituir ou pagar imposto."
       >
-        <RouterLink class="button" :to="{ name: 'income' }">
-          Lançar meu informe de rendimentos
-        </RouterLink>
+        <RouterLink class="button" :to="{ name: 'income' }"> Lançar meus rendimentos </RouterLink>
       </EmptyState>
       <TaxEstimateCard
         v-else

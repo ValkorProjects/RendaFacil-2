@@ -286,23 +286,23 @@ As telas de Rendas, Dependentes e Despesas usam o motor, com os dados guardados 
 
 | Cadastro na tela                                        | No motor                                                   |
 | ------------------------------------------------------- | ---------------------------------------------------------- |
-| Total dos rendimentos (informe, quadro 3, linha 01)     | `fontes[].rendimentos`, o valor do ano                     |
-| Contribuição previdenciária (quadro 3, linha 02)        | `fontes[].previdencia`, o valor do ano                     |
-| IR retido na fonte (quadro 3, linha 05)                 | `fontes[].irrf`, o valor do ano                            |
-| 13º, IRRF sobre o 13º e PLR (quadro 5)                  | ficam fora (tributação exclusiva); só exibidos             |
+| Valor mensal de cada rendimento                         | `fontes[].rendimentos` (anualizado × 12)                   |
+| INSS descontado no mês                                  | `fontes[].previdencia` (anualizado × 12)                   |
+| IR retido na fonte no mês                               | `fontes[].irrf` (anualizado × 12)                          |
+| 13º, IRRF sobre o 13º e PLR (valores do ano, quadro 5)  | ficam fora (tributação exclusiva); só exibidos             |
 | Rendimento de um dependente ("De quem é o rendimento?") | uma fonte com `dependente_id`; fora se ele não for válido  |
 | Pensão alimentícia recebida                             | fica fora (isenta)                                         |
 | Cada dependente não marcado em outra declaração         | `dependentes`                                              |
 | Despesas de saúde e educação cadastradas em Despesas    | `saude` e `educacao`, com validação e limite por pessoa    |
 | Pensão alimentícia paga, cadastrada em Despesas         | `pensoes`, só com a base legal; fora da simulação da folha |
 
-A tela de Rendas pede os números do informe de rendimentos, com o ano fechado, e cada campo mostra o quadro e a linha do informe (RF-12). O contador "X de N informes lançados" compara as fontes do titular com o número esperado (`fontes_esperadas`); enquanto faltar informe, a Home mostra a estimativa como provisória (RF-14).
+A tela de Rendas pede os valores mensais de cada fonte, como no holerite, para a declaração ir sendo montada ao longo do ano; cada campo mostra onde o valor está no informe de rendimentos (quadro e linha, ÷ 12), para quem já recebeu o informe (RF-12). O contador "X de N empresas lançadas" compara as fontes CLT e pró-labore do titular com o número esperado (`fontes_esperadas`); enquanto faltar alguma, a Home mostra a estimativa como provisória (RF-14).
 
-Para uma fonte CLT, a tela compara o INSS e o IR retido digitados com 12 vezes a folha mensal de um salário igual ao total ÷ 12 (`incomeEntryWarnings`) e avisa, sem bloquear, quando diferem mais de R$ 0,10 por mês (INSS acima da tabela, IR retido diferente da tabela). Férias, 13º, um segundo empregador e deduções extras explicam diferenças legítimas, e o informe de rendimentos é o que vale. A visão **Mensal** do cartão mostra a conta da folha ao lado dos valores informados. Ela supõe o mesmo salário o ano todo; escolher um mês específico está como TODO em `TaxEstimateCard.vue`.
+Para uma fonte CLT, a tela compara o INSS e o IR retido digitados com a folha mensal (`incomeEntryWarnings`) e avisa, sem bloquear, quando diferem mais de R$ 0,10 (INSS acima da tabela, IR retido diferente da tabela). Férias, 13º, um segundo empregador e deduções extras explicam diferenças legítimas, e o informe de rendimentos é o que vale. A visão **Mensal** do cartão mostra a conta da folha ao lado dos valores informados. Ela supõe o mesmo salário o ano todo; escolher um mês específico está como TODO em `TaxEstimateCard.vue`.
 
 Duas outras proteções, também sem bloquear: `inssCeilingWarning` avisa quando o INSS somado de todas as fontes passa do teto anual (12 × 988,09 = 11.857,08, critério do RF-12), o que acontece com mais de um empregador; e o cartão lista as categorias que não são CLT ("Tratado como salário: …"), porque aluguéis, autônomo/PJ e aposentadoria passam pelo motor como se fossem salário. Quem tem uma renda de PJ sem retenção, por exemplo, paga o carnê-leão mês a mês, e esse imposto ainda não é descontado da estimativa (seção 9).
 
-A conversão fica em `buildTaxInput` e `buildDeclarationData`, em [`src/stores/income.ts`](../src/stores/income.ts). O botão "Calcular INSS e IR pelo salário" usa `calcularFolhaMensal` com os dependentes válidos, sem presumir pensão mensal. Os dependentes valem para a declaração inteira: são informados uma vez só e contam uma vez só, mesmo com várias fontes de renda. A pensão anual é cadastrada uma única vez em Despesas, com a confirmação da base legal, e só entra no ajuste da declaração; não é projetada na simulação mensal da folha, pois o total anual não informa como os pagamentos se distribuem pelos meses ou pelas fontes pagadoras. Todas as categorias de renda são tratadas como rendimento tributável; aluguéis, trabalho autônomo e aposentadoria têm regras próprias que ficam fora do MVP (seção 9), e o cartão da estimativa avisa isso.
+A conversão fica em `buildTaxInput` e `buildDeclarationData`, em [`src/stores/income.ts`](../src/stores/income.ts). O botão "Calcular INSS e IR pelo salário" usa `calcularFolhaMensal` com os dependentes válidos, sem presumir pensão mensal. Os dependentes valem para a declaração inteira: são informados uma vez só e contam uma vez só, mesmo com várias fontes de renda. A pensão paga é cadastrada em Despesas (a cada pagamento ou pelo total do ano), com a confirmação da base legal, e só entra no ajuste da declaração; não é projetada na simulação mensal da folha, pois os lançamentos não dizem como os pagamentos se distribuem pelas fontes pagadoras. Todas as categorias de renda são tratadas como rendimento tributável; aluguéis, trabalho autônomo e aposentadoria têm regras próprias que ficam fora do MVP (seção 9), e o cartão da estimativa avisa isso.
 
 ## 9. Fora do escopo do MVP
 

@@ -11,7 +11,7 @@ const setup = () => {
   const store = useIncomeStore()
   store.addRegistration({
     id: 100,
-    incomes: [{ id: 101, category: 'clt', amount: 'R$ 120.000,00', inss: '', irrf: '' }],
+    incomes: [{ id: 101, category: 'clt', amount: 'R$ 10.000,00', inss: '', irrf: '' }],
   })
   return store
 }
@@ -37,13 +37,13 @@ const expense = (id: number | null, description = 'Escola') => ({
 describe('RF-11 · cadastro e cálculo de dependentes', () => {
   it('salva pessoa e múltiplas rendas pelo questionário sem afetar o rascunho do titular', () => {
     const store = setup()
-    store.draftIncomes[0]!.amount = 'R$ 36.000,00'
+    store.draftIncomes[0]!.amount = 'R$ 3.000,00'
     expect(
       store.saveDependentWithIncomes(
         { ...emptyDependent(), apelido: 'Lia', teve_renda_propria: true },
         [
-          { id: -1, category: 'clt', amount: 'R$ 24.000,00', inss: 'R$ 1.200,00', irrf: '' },
-          { id: -2, category: 'pensaoAlimenticia', amount: 'R$ 6.000,00', inss: '', irrf: '' },
+          { id: -1, category: 'clt', amount: 'R$ 2.000,00', inss: 'R$ 100,00', irrf: '' },
+          { id: -2, category: 'pensaoAlimenticia', amount: 'R$ 500,00', inss: '', irrf: '' },
         ],
       ),
     ).toBe(true)
@@ -54,7 +54,7 @@ describe('RF-11 · cadastro e cálculo de dependentes', () => {
     expect(store.pendingDependents).toEqual([])
     expect(store.taxableTotal).toBe(14_400_000)
     expect(store.exemptTotal).toBe(600_000)
-    expect(store.draftIncomes[0]!.amount).toBe('R$ 36.000,00')
+    expect(store.draftIncomes[0]!.amount).toBe('R$ 3.000,00')
   })
 
   it('reabre e edita as rendas existentes sem duplicar nem alterar rendas de outras pessoas', () => {
@@ -66,22 +66,22 @@ describe('RF-11 · cadastro e cálculo de dependentes', () => {
         {
           id: 201,
           category: 'clt',
-          amount: 'R$ 12.000,00',
+          amount: 'R$ 1.000,00',
           inss: '',
           irrf: '',
           dependentId: lia.id,
         },
-        { id: 202, category: 'clt', amount: 'R$ 6.000,00', inss: '', irrf: '' },
+        { id: 202, category: 'clt', amount: 'R$ 500,00', inss: '', irrf: '' },
       ],
     })
     const draft = store
       .incomesForDependent(lia.id)
-      .map((income) => ({ ...income, amount: 'R$ 18.000,00' }))
-    expect(store.incomesForDependent(lia.id)[0]!.amount).toBe('R$ 12.000,00')
+      .map((income) => ({ ...income, amount: 'R$ 1.500,00' }))
+    expect(store.incomesForDependent(lia.id)[0]!.amount).toBe('R$ 1.000,00')
     expect(store.saveDependentWithIncomes({ ...lia, apelido: 'Lili' }, draft, lia.id)).toBe(true)
     expect(store.incomesForDependent(lia.id)).toHaveLength(1)
-    expect(store.incomesForDependent(lia.id)[0]).toMatchObject({ id: 201, amount: 'R$ 18.000,00' })
-    expect(store.registrations[1]!.incomes[1]).toMatchObject({ id: 202, amount: 'R$ 6.000,00' })
+    expect(store.incomesForDependent(lia.id)[0]).toMatchObject({ id: 201, amount: 'R$ 1.500,00' })
+    expect(store.registrations[1]!.incomes[1]).toMatchObject({ id: 202, amount: 'R$ 500,00' })
     expect(store.dependents[0]!.apelido).toBe('Lili')
   })
 
@@ -90,7 +90,7 @@ describe('RF-11 · cadastro e cálculo de dependentes', () => {
     expect(
       store.saveDependentWithIncomes(
         { ...emptyDependent(), apelido: 'Lia', teve_renda_propria: true },
-        [{ id: -1, category: 'clt', amount: 'R$ 1.200,00', inss: 'R$ 1.212,00', irrf: '' }],
+        [{ id: -1, category: 'clt', amount: 'R$ 100,00', inss: 'R$ 101,00', irrf: '' }],
       ),
     ).toBe(false)
     expect(store.dependents).toEqual([])
@@ -98,7 +98,7 @@ describe('RF-11 · cadastro e cálculo de dependentes', () => {
     expect(
       store.saveDependentWithIncomes(
         { ...emptyDependent(), apelido: 'Lia', teve_renda_propria: true },
-        [{ id: 101, category: 'clt', amount: 'R$ 1.200,00', inss: '', irrf: '' }],
+        [{ id: 101, category: 'clt', amount: 'R$ 100,00', inss: '', irrf: '' }],
       ),
     ).toBe(false)
     expect(store.dependents).toEqual([])
@@ -112,7 +112,7 @@ describe('RF-11 · cadastro e cálculo de dependentes', () => {
     const lia = store.dependents[0]!
     store.saveDependentWithIncomes(
       fields,
-      [{ id: -1, category: 'clt', amount: 'R$ 1.200,00', inss: '', irrf: '' }],
+      [{ id: -1, category: 'clt', amount: 'R$ 100,00', inss: '', irrf: '' }],
       lia.id,
     )
     expect(store.taxEstimate).toMatchObject({ ok: true, provisional: false })
@@ -156,7 +156,7 @@ describe('RF-11 · cadastro e cálculo de dependentes', () => {
         {
           id: 201,
           category: 'clt',
-          amount: 'R$ 24.000,00',
+          amount: 'R$ 2.000,00',
           inss: '',
           irrf: '',
           dependentId: excluded.id,
@@ -182,7 +182,7 @@ describe('RF-11 · cadastro e cálculo de dependentes', () => {
     const store = setup()
     const dependent = addDependent({ teve_renda_propria: true })
     expect(store.taxEstimate).toMatchObject({ ok: true, provisional: true })
-    Object.assign(store.draftIncomes[0]!, { amount: 'R$ 12.000,00', dependentId: dependent.id })
+    Object.assign(store.draftIncomes[0]!, { amount: 'R$ 1.000,00', dependentId: dependent.id })
     expect(store.summaryTaxEstimate).toMatchObject({ ok: true, provisional: true })
     store.saveDraft()
     expect(store.taxEstimate).toMatchObject({
@@ -204,7 +204,7 @@ describe('RF-11 · cadastro e cálculo de dependentes', () => {
         {
           id: 201,
           category: 'pensaoAlimenticia',
-          amount: 'R$ 10.800,00',
+          amount: 'R$ 900,00',
           inss: '',
           irrf: '',
           dependentId: teo.id,
@@ -229,17 +229,10 @@ describe('RF-11 · cadastro e cálculo de dependentes', () => {
     store.addRegistration({
       id: 200,
       incomes: [
-        {
-          id: 201,
-          category: 'clt',
-          amount: 'R$ 10.800,00',
-          inss: '',
-          irrf: '',
-          dependentId: lia.id,
-        },
+        { id: 201, category: 'clt', amount: 'R$ 900,00', inss: '', irrf: '', dependentId: lia.id },
       ],
     })
-    Object.assign(store.draftIncomes[0]!, { amount: 'R$ 6.000,00', dependentId: lia.id })
+    Object.assign(store.draftIncomes[0]!, { amount: 'R$ 500,00', dependentId: lia.id })
     expect(store.expensesForDependent(lia.id).map((item) => item.descricao)).toEqual([
       'Escola Lia',
       'Material Lia',
@@ -269,7 +262,7 @@ describe('RF-11 · cadastro e cálculo de dependentes', () => {
   it('não aplica dependentes do titular à folha de um dependente', () => {
     const store = setup()
     const lia = addDependent()
-    Object.assign(store.draftIncomes[0]!, { amount: 'R$ 78.000,00', dependentId: lia.id })
+    Object.assign(store.draftIncomes[0]!, { amount: 'R$ 6.500,00', dependentId: lia.id })
     expect(store.summaryPayroll.at(-1)).toMatchObject({
       dependentes: 0,
       deducaoDependentes: 0,
@@ -279,17 +272,17 @@ describe('RF-11 · cadastro e cálculo de dependentes', () => {
   it('calcula INSS e IR da renda do dependente pelo salário, sem os dependentes do titular', () => {
     addDependent()
     addDependent({ apelido: 'Bia' })
-    const income = { id: -1, category: 'clt' as const, amount: 'R$ 78.000,00', inss: '', irrf: '' }
+    const income = { id: -1, category: 'clt' as const, amount: 'R$ 6.500,00', inss: '', irrf: '' }
 
     expect(fillIncomeFromSalary(income, 0)).toBe('')
 
     const own = calcularFolhaMensal({ bruto: 650_000, dependentes: 0, pensao: 0 })
     expect(income).toMatchObject({
-      inss: 'R$ 8.538,12',
-      irrf: formatMoneyInput(own.irrf * 12),
+      inss: 'R$ 711,51',
+      irrf: formatMoneyInput(own.irrf),
     })
     // Com os 2 dependentes do titular seria R$ 465,65.
-    expect(income.irrf).not.toBe('R$ 5.587,80')
+    expect(income.irrf).not.toBe('R$ 465,65')
   })
 
   it('devolve a mensagem do motor quando o salário não pode ser calculado', () => {
