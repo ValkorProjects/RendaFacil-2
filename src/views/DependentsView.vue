@@ -12,7 +12,7 @@ import {
   fillIncomeFromSalary,
   type RegisteredIncomeEntry,
 } from '@/stores/income'
-import { parametros } from '@/irpf'
+import { parametros, tipoDespesa } from '@/irpf'
 import { cents, formatCurrency, moneyConfig } from '@/utils/currency'
 import {
   dependentError,
@@ -99,9 +99,9 @@ const save = () => {
     editingId.value === undefined ? 'Dependente adicionado.' : 'Dependente atualizado.'
   void closeForm()
 }
-// The dependent's own salary: no dependents or alimony of their own in this declaration.
+// The dependent's own salary: no dependents of their own in this declaration.
 const fillFromSalary = (income: RegisteredIncomeEntry) => {
-  salaryErrors.value[income.id] = fillIncomeFromSalary(income, 0, '')
+  salaryErrors.value[income.id] = fillIncomeFromSalary(income, 0)
 }
 const remove = async (dependent: RegisteredDependent) => {
   store.removeDependent(dependent.id)
@@ -356,7 +356,8 @@ const linkedIncomes = (id: number) =>
               <p>As seguintes despesas serão apagadas:</p>
               <ul>
                 <li v-for="expense in store.expensesForDependent(dependent.id)" :key="expense.id">
-                  {{ expense.descricao }} — {{ formatCurrency(expense.valor_centavos) }}
+                  {{ expense.descricao || tipoDespesa(expense.tipo)?.rotulo || expense.tipo }} —
+                  {{ formatCurrency(expense.valor_centavos) }}
                 </li>
               </ul>
             </template>

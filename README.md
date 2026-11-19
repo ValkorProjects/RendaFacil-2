@@ -53,13 +53,14 @@ Em desenvolvimento, rumo ao MVP. As funcionalidades estão organizadas em issues
 | Pronto                                                                                   | Em andamento ou planejado                                    |
 | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
 | Motor de cálculo do ajuste anual e da folha mensal, com testes de casos de referência    | Questionário inicial com triagem                             |
-| Parâmetros fiscais de 2026                                                               | Persistência das rendas e dos dependentes no Supabase        |
-| Estrutura do banco e políticas RLS definidas em [`supabase/`](supabase/)                 | Telas finais de Rendas e Despesas                            |
+| Parâmetros fiscais de 2026                                                               | Persistência das rendas, dependentes e despesas no Supabase  |
+| Estrutura do banco e políticas RLS definidas em [`supabase/`](supabase/)                 | Tela final de Rendas                                         |
 | Tela de Rendas com estimativa do imposto (dados ainda só em memória)                     | Home com o resultado e o detalhe do cálculo                  |
 | Cadastro, login, perfil, consentimento e política de privacidade                         | Publicação da Edge Function de exclusão e deploy de produção |
 | Documentação do cálculo                                                                  |                                                              |
 | Layout base: saudação, barra inferior (Home, Rendas, Despesas, Menu)                     |                                                              |
 | Cadastro de dependentes em `/dependentes`, com acesso pelo Menu e questionário de Rendas |                                                              |
+| Tela de Despesas com cadastro, efeito de cada despesa e barra do limite de educação      |                                                              |
 
 O cadastro de dependentes guarda apenas apelido, relação, presença em outra declaração e renda
 própria em 2026. Dependentes em outra declaração, suas rendas e despesas ficam fora do cálculo.
@@ -70,9 +71,12 @@ tipo de rendimento, valor mensal, INSS e IR retido, com suporte a várias fontes
 são salvos junto com o dependente e aparecem automaticamente em Rendas. A opção “Preencher
 depois” mantém a pendência; editar o dependente recupera os valores já cadastrados.
 
-A tela de Despesas permite lançar despesas anuais de saúde e educação com beneficiário. A lista
-de tipos já separa as que deduzem das que não deduzem, e o reembolso só é pedido nas despesas de
-saúde dedutíveis; o motor aplica o limite de educação por pessoa. Ao excluir um dependente, a confirmação lista suas despesas
+A tela de Despesas lança despesas de saúde, educação e a pensão alimentícia paga, em duas etapas
+(tipo, depois os dados). A lista de tipos já separa as que deduzem das que não deduzem, e o
+reembolso só é pedido nas despesas de saúde dedutíveis. Enquanto o valor é digitado, a tela mostra
+quanto a despesa pode reduzir o imposto (RF-07), e uma barra mostra o uso do limite de educação de
+cada pessoa. A pensão paga só deduz com a confirmação da base legal (decisão judicial, acordo
+homologado ou escritura pública). Ao excluir um dependente, a confirmação lista suas despesas
 e informa a remoção dos rendimentos vinculados. Todos esses dados ainda ficam em memória nesta
 sessão, sem persistência após recarregar a página. O questionário inicial separado segue planejado;
 o acesso atual ao cadastro está no formulário de Rendas.

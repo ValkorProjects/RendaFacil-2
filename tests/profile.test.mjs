@@ -211,12 +211,24 @@ test('dependents without income survive saving and account data is cleared on si
   assert.equal(income.dependents[0].teve_renda_propria, false)
   assert.equal(income.taxableTotal, 1800000)
   income.draftIncomes[0].amount = '20000'
-  income.alimonyPaid = '80000'
+  income.addExpense({
+    categoria: 'pensao',
+    tipo: 'pensao_alimenticia',
+    beneficiario: 'outra',
+    dependente_id: null,
+    valor_centavos: 960000,
+    reembolso_centavos: 0,
+    base_legal_ok: true,
+    data: '2026-01-01',
+    descricao: '',
+    recebedor: 'Pessoa beneficiária',
+    pensaoIniciouEm2026: false,
+  })
   await auth.signOut()
   assert.equal(income.registrations.length, 0)
   assert.equal(income.draftIncomes[0].amount, '')
   assert.equal(income.dependentCount, 0)
-  assert.equal(income.alimonyPaid, '')
+  assert.equal(income.expenses.length, 0)
 })
 
 test('deletion failure preserves the account and data; confirmed deletion signs out and clears them', async () => {

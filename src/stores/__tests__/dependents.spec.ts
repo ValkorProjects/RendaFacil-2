@@ -29,6 +29,9 @@ const expense = (id: number | null, description = 'Escola') => ({
   valor_centavos: 500_000,
   reembolso_centavos: 0,
   base_legal_ok: null,
+  data: '2026-03-10',
+  recebedor: '',
+  pensaoIniciouEm2026: false,
 })
 
 describe('RF-11 · cadastro e cálculo de dependentes', () => {
@@ -263,31 +266,28 @@ describe('RF-11 · cadastro e cálculo de dependentes', () => {
     expect(store.summaryPayroll.at(-1)).toMatchObject({
       dependentes: 0,
       deducaoDependentes: 0,
-      pensao: 0,
     })
   })
 
-  it('calcula INSS e IR da renda do dependente pelo salário, sem os dependentes e a pensão do titular', () => {
-    const store = useIncomeStore()
+  it('calcula INSS e IR da renda do dependente pelo salário, sem os dependentes do titular', () => {
     addDependent()
     addDependent({ apelido: 'Bia' })
-    store.alimonyPaid = 'R$ 800,00'
     const income = { id: -1, category: 'clt' as const, amount: 'R$ 6.500,00', inss: '', irrf: '' }
 
-    expect(fillIncomeFromSalary(income, 0, '')).toBe('')
+    expect(fillIncomeFromSalary(income, 0)).toBe('')
 
     const own = calcularFolhaMensal({ bruto: 650_000, dependentes: 0, pensao: 0 })
     expect(income).toMatchObject({
       inss: 'R$ 711,51',
       irrf: formatMoneyInput(own.irrf),
     })
-    // Com os 2 dependentes e a pensão do titular seria R$ 248,42 (caso F1).
-    expect(income.irrf).not.toBe('R$ 248,42')
+    // Com os 2 dependentes do titular seria R$ 465,65.
+    expect(income.irrf).not.toBe('R$ 465,65')
   })
 
   it('devolve a mensagem do motor quando o salário não pode ser calculado', () => {
     const income = { id: -1, category: 'clt' as const, amount: '', inss: '', irrf: '' }
-    expect(fillIncomeFromSalary(income, -1, '')).not.toBe('')
+    expect(fillIncomeFromSalary(income, -1)).not.toBe('')
     expect(income).toMatchObject({ inss: '', irrf: '' })
   })
 

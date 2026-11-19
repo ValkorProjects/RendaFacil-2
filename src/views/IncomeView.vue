@@ -31,14 +31,10 @@ const confirmingDeleteId = ref<number | null>(null)
 const editingIncomes = ref<RegisteredIncomeEntry[]>([])
 const salaryErrors = ref<Record<number, string>>({})
 
-// The payslip checks use the declaration's dependents and alimony, whichever source it is.
+// The payslip checks use the declaration's dependents for the holder's sources.
 const incomeWarnings = (income: RegisteredIncomeEntry | undefined) =>
   income
-    ? incomeEntryWarnings(
-        income,
-        income.dependentId == null ? incomeStore.dependentCount : 0,
-        income.dependentId == null ? incomeStore.household.alimonyPaid : '',
-      )
+    ? incomeEntryWarnings(income, income.dependentId == null ? incomeStore.dependentCount : 0)
     : []
 
 const fillFromSalary = (id: number) => {
@@ -378,8 +374,8 @@ const saveIncomeAndReturn = () => {
                 Calcular INSS e IR pelo salário
               </button>
               <p class="field-help">
-                Supõe o mesmo salário todos os meses e usa os dependentes e a pensão informados
-                abaixo.
+                Supõe o mesmo salário todos os meses e considera os dependentes. A pensão paga é
+                lançada em Despesas e entra no ajuste da declaração, não nesta simulação mensal.
               </p>
             </template>
             <p v-if="salaryErrors[income.id]" class="field-error" role="alert">
@@ -427,34 +423,6 @@ const saveIncomeAndReturn = () => {
           {{ incomeStore.pendingDependents.map((dependent) => dependent.apelido).join(', ') }}.
           Selecione o apelido em “De quem é o rendimento?” e salve o lançamento.
         </p>
-      </section>
-
-      <section class="form-section glass" aria-labelledby="alimony-title">
-        <div class="section-heading">
-          <div>
-            <p class="section-kicker">03</p>
-            <h2 id="alimony-title">Pensão alimentícia paga</h2>
-          </div>
-          <span class="section-status optional">Opcional</span>
-        </div>
-        <p class="field-help">
-          Só deduz a pensão fixada por decisão judicial, acordo homologado na Justiça ou escritura
-          pública. A pensão recebida deve ser lançada em Rendas, na categoria isenta e com o
-          beneficiário correto.
-        </p>
-        <p class="field-help">
-          Informe o total pago por mês uma vez só: vale para a declaração inteira, não para cada
-          fonte de renda.
-        </p>
-        <label class="field-label" for="alimony-amount">Valor mensal</label>
-        <Money3Component
-          id="alimony-amount"
-          class="field-control currency-input"
-          inputmode="numeric"
-          autocomplete="off"
-          v-model="incomeStore.alimonyPaid"
-          v-bind="moneyConfig"
-        />
       </section>
 
       <footer class="summary-card" aria-labelledby="summary-title">
