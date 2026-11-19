@@ -18,6 +18,10 @@ const { isInstalled } = usePwaInstall()
           Calcula os dois modelos, completo e simplificado, e recomenda o que dá o menor imposto.
         </li>
         <li>
+          Os rendimentos entram por mês, como no holerite, e a estimativa conta 12 meses iguais; 13º
+          e PLR entram pelo valor do ano e ficam fora do ajuste.
+        </li>
+        <li>
           O resultado compara o imposto devido no ano com o que já foi retido na fonte: a diferença
           é a restituição ou o imposto a pagar.
         </li>
@@ -33,6 +37,10 @@ const { isInstalled } = usePwaInstall()
         </li>
         <li>Ganho de capital, bolsa e aplicações financeiras.</li>
         <li>Previdência complementar (PGBL), livro-caixa, doações e incentivos.</li>
+        <li>
+          Lucros e dividendos, inclusive a retenção de 10% sobre mais de R$ 50 mil por mês, e a
+          tributação mínima de quem recebeu mais de R$ 600 mil no ano (Lei 15.270/2025).
+        </li>
       </ul>
     </section>
 

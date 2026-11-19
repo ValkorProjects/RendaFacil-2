@@ -7,7 +7,13 @@ import { useAuthStore } from '@/stores/auth'
 
 // RF-15: dependentes, minha conta, sobre a estimativa, política de privacidade, sair e excluir
 // conta. Excluir abre Minha conta já com a confirmação na tela (RF-04).
-const items: { to: RouteLocationRaw; label: string; description: string; icon: IconName }[] = [
+const items: {
+  to: RouteLocationRaw
+  label: string
+  description: string
+  icon: IconName
+  danger?: boolean
+}[] = [
   {
     to: { name: 'dependents' },
     label: 'Dependentes',
@@ -36,7 +42,8 @@ const items: { to: RouteLocationRaw; label: string; description: string; icon: I
     to: { name: 'user', query: { acao: 'excluir' } },
     label: 'Excluir conta',
     description: 'Apaga a conta e todos os dados, com confirmação',
-    icon: 'settings',
+    icon: 'trash',
+    danger: true,
   },
 ]
 
@@ -65,7 +72,7 @@ async function signOut() {
     <nav aria-label="Menu">
       <ul class="menu-list">
         <li v-for="item in items" :key="item.label">
-          <RouterLink :to="item.to" class="menu-item">
+          <RouterLink :to="item.to" class="menu-item" :class="{ danger: item.danger }">
             <AppIcon :name="item.icon" class="menu-icon" />
             <span class="menu-text">
               <span class="menu-label">{{ item.label }}</span>
@@ -76,7 +83,7 @@ async function signOut() {
         </li>
         <li>
           <button type="button" class="menu-item" :disabled="signingOut" @click="signOut">
-            <AppIcon name="menu" class="menu-icon" />
+            <AppIcon name="logout" class="menu-icon" />
             <span class="menu-text">
               <span class="menu-label">Sair</span>
               <span class="menu-description">Encerra a sessão neste aparelho</span>
@@ -126,6 +133,12 @@ button.menu-item {
 
 .menu-error {
   margin-top: 0.5rem;
+  color: var(--color-danger);
+}
+
+/* A destructive item: the icon and the label in the danger colour, so it reads apart from Sair. */
+.menu-item.danger .menu-icon,
+.menu-item.danger .menu-label {
   color: var(--color-danger);
 }
 
