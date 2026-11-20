@@ -87,10 +87,10 @@ const closeForm = async () => {
   await nextTick()
   addButton.value?.focus()
 }
-const save = () => {
-  if (!canSave.value) return
+const save = async () => {
+  if (store.saving || !canSave.value) return
   const incomes = asksIncome.value && !fillIncomeLater.value ? incomeDrafts.value : []
-  if (!store.saveDependentWithIncomes(draft.value, incomes, editingId.value)) {
+  if (!(await store.saveDependentWithIncomes(draft.value, incomes, editingId.value))) {
     saveError.value =
       'Não foi possível salvar. Confira os valores dos rendimentos e tente novamente.'
     return
@@ -104,7 +104,7 @@ const fillFromSalary = (income: RegisteredIncomeEntry) => {
   salaryErrors.value[income.id] = fillIncomeFromSalary(income, 0)
 }
 const remove = async (dependent: RegisteredDependent) => {
-  store.removeDependent(dependent.id)
+  if (!(await store.removeDependent(dependent.id))) return
   confirmingId.value = null
   message.value = `${dependent.apelido} e os lançamentos vinculados foram excluídos.`
   await nextTick()
@@ -295,7 +295,14 @@ const linkedIncomes = (id: number) =>
       <p v-if="saveError" role="alert">{{ saveError }}</p>
       <div class="actions">
         <button class="button secondary" type="button" @click="closeForm">Cancelar</button>
-        <button class="button" type="submit" :disabled="!canSave">Salvar dependente</button>
+        <button
+          class="button"
+          type="submit"
+          :disabled="!canSave || !store.loaded"
+          :aria-disabled="store.saving"
+        >
+          Salvar dependente
+        </button>
       </div>
     </form>
 
@@ -373,7 +380,9 @@ const linkedIncomes = (id: number) =>
       </li>
     </ul>
     <RouterLink :to="{ name: 'income' }">Voltar ao questionário de Rendas</RouterLink>
-    <p class="muted">Os cadastros ficam disponíveis nesta sessão, assim como seus rendimentos.</p>
+    <p class="muted">
+      Os dependentes e rendimentos vinculados são salvos na sua declaração de 2026.
+    </p>
   </PageCard>
 </template>
 

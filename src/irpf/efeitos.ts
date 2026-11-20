@@ -124,7 +124,9 @@ interface Contexto {
 }
 
 const montarContexto = (dados: DadosDeclaracao, P: ParametrosIrpf): Contexto => {
-  const avaliacoes = dados.despesas.map((despesa) => avaliarDespesa(despesa, dados.dependentes))
+  const avaliacoes = dados.despesas.map((despesa) =>
+    avaliarDespesa(despesa, dados.dependentes, dados.despesas),
+  )
   const educacaoDedutivelPorPessoa = new Map<string, number>()
   dados.despesas.forEach((despesa, i) => {
     if (despesa.categoria !== 'educacao' || !avaliacoes[i]?.deduz) return

@@ -247,7 +247,7 @@ O catálogo fica em [`src/irpf/despesas.ts`](../src/irpf/despesas.ts). A chave d
 
 ## 8. Como usar o motor
 
-A API pública fica em [`src/irpf/index.ts`](../src/irpf/index.ts). As telas convertem seus cadastros para linhas da declaração e passam para o motor, sem fazer conta própria. Atualmente, os cadastros de rendimentos e despesas ficam em memória; a persistência no Supabase ainda está planejada:
+A API pública fica em [`src/irpf/index.ts`](../src/irpf/index.ts). As telas convertem seus cadastros para linhas da declaração e passam para o motor, sem fazer conta própria. Os cadastros de rendimentos, dependentes e despesas são salvos no Supabase, na declaração de 2026 da conta (`src/data/`), e o estado da tela só muda depois que o servidor confirma:
 
 ```ts
 import { calcularAjusteAnual, montarEntrada } from '@/irpf'
@@ -282,7 +282,7 @@ const resultado = calcularAjusteAnual({
 
 ### 8.1 Estimativa parcial nas telas
 
-As telas de Rendas, Dependentes e Despesas usam o motor, com os dados guardados só em memória:
+As telas de Rendas, Dependentes e Despesas usam o motor. Os dados digitados ficam no estado local até serem salvos e, depois, são persistidos no Supabase, na declaração de 2026 vinculada à conta:
 
 | Cadastro na tela                                        | No motor                                                   |
 | ------------------------------------------------------- | ---------------------------------------------------------- |

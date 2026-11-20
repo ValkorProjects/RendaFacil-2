@@ -1,30 +1,25 @@
+import type { Tables } from '@/types/database.types'
 import type { Entrada } from './ajusteAnual'
 import { somar } from './centavos'
 import { tipoDespesa, type CategoriaDespesa } from './despesas'
 
-// Linhas das tabelas do Supabase (RF-02), só com as colunas que o motor usa. Podem ser trocadas
-// pelos tipos gerados em src/types/database.types.ts quando eles existirem.
-
-export interface RegistroFonte {
-  dependente_id: string | null // null = titular
-  rendimentos_centavos: number
-  previdencia_centavos: number
-  irrf_centavos: number
-}
-
-export interface RegistroDependente {
-  id: string
-  em_outra_declaracao: boolean
-}
+// The engine consumes only the relevant columns of the generated schema.
+export type RegistroFonte = Pick<
+  Tables<'fontes_pagadoras'>,
+  'dependente_id' | 'rendimentos_centavos' | 'previdencia_centavos' | 'irrf_centavos'
+>
+export type RegistroDependente = Pick<Tables<'dependentes'>, 'id' | 'em_outra_declaracao'>
 
 export interface RegistroDespesa {
   categoria: CategoriaDespesa
   tipo: string
   beneficiario: 'titular' | 'dependente' | 'outra'
   dependente_id: string | null
+  recebedor: string
   valor_centavos: number
   reembolso_centavos: number
   base_legal_ok: boolean | null
+  pensao_iniciou_em_2026: boolean
 }
 
 export interface DadosDeclaracao {
@@ -44,15 +39,33 @@ export type AvaliacaoDespesa = { deduz: true } | { deduz: false; motivo: MotivoN
 
 // Um dependente só conta numa declaração: quem está na de outra pessoa não entra nesta, nem as
 // despesas e a renda dele.
-const dependenteValido = (id: string | null, dependentes: readonly RegistroDependente[]) => {
+export const dependentePodeSerDeclarado = (
+  dependente: RegistroDependente,
+  despesas: readonly RegistroDespesa[],
+) =>
+  !dependente.em_outra_declaracao &&
+  !despesas.some(
+    (despesa) =>
+      despesa.categoria === 'pensao' &&
+      despesa.beneficiario === 'dependente' &&
+      despesa.dependente_id === dependente.id &&
+      !despesa.pensao_iniciou_em_2026,
+  )
+
+const dependenteValido = (
+  id: string | null,
+  dependentes: readonly RegistroDependente[],
+  despesas: readonly RegistroDespesa[],
+) => {
   const dependente = dependentes.find((item) => item.id === id)
   if (!dependente) throw new Error(`Dependente ${id} não está na lista de dependentes`)
-  return !dependente.em_outra_declaracao
+  return dependentePodeSerDeclarado(dependente, despesas)
 }
 
 export function avaliarDespesa(
   despesa: RegistroDespesa,
   dependentes: readonly RegistroDependente[],
+  despesas: readonly RegistroDespesa[] = [despesa],
 ): AvaliacaoDespesa {
   const tipo = tipoDespesa(despesa.tipo)
   if (!tipo || tipo.categoria !== despesa.categoria) {
@@ -62,6 +75,7 @@ export function avaliarDespesa(
 
   // Na pensão, o beneficiário é quem recebe, que não é dependente. Vale a base legal.
   if (despesa.categoria === 'pensao') {
+    if (!despesa.recebedor.trim()) return { deduz: false, motivo: 'beneficiario_invalido' }
     return despesa.base_legal_ok === true
       ? { deduz: true }
       : { deduz: false, motivo: 'sem_base_legal' }
@@ -69,7 +83,8 @@ export function avaliarDespesa(
 
   const beneficiarioValido =
     despesa.beneficiario === 'titular' ||
-    (despesa.beneficiario === 'dependente' && dependenteValido(despesa.dependente_id, dependentes))
+    (despesa.beneficiario === 'dependente' &&
+      dependenteValido(despesa.dependente_id, dependentes, despesas))
   if (!beneficiarioValido) return { deduz: false, motivo: 'beneficiario_invalido' }
 
   if (despesa.categoria === 'saude' && despesa.reembolso_centavos >= despesa.valor_centavos) {
@@ -82,7 +97,7 @@ export function avaliarDespesa(
 export function montarEntrada({ fontes, dependentes, despesas }: DadosDeclaracao): Entrada {
   const avaliadas = despesas.map((despesa) => ({
     despesa,
-    dedutivel: avaliarDespesa(despesa, dependentes).deduz,
+    dedutivel: avaliarDespesa(despesa, dependentes, despesas).deduz,
   }))
   const daCategoria = (categoria: CategoriaDespesa) =>
     avaliadas.filter(({ despesa }) => despesa.categoria === categoria)
@@ -91,14 +106,17 @@ export function montarEntrada({ fontes, dependentes, despesas }: DadosDeclaracao
     fontes: fontes
       .filter(
         (fonte) =>
-          fonte.dependente_id === null || dependenteValido(fonte.dependente_id, dependentes),
+          fonte.dependente_id === null ||
+          dependenteValido(fonte.dependente_id, dependentes, despesas),
       )
       .map((fonte) => ({
         rendimentos: fonte.rendimentos_centavos,
         previdencia: fonte.previdencia_centavos,
         irrf: fonte.irrf_centavos,
       })),
-    dependentes: dependentes.filter((dependente) => !dependente.em_outra_declaracao).length,
+    dependentes: dependentes.filter((dependente) =>
+      dependentePodeSerDeclarado(dependente, despesas),
+    ).length,
     pensoes: somar(
       daCategoria('pensao').filter(({ dedutivel }) => dedutivel),
       ({ despesa }) => despesa.valor_centavos,

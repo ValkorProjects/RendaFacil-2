@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import { Money3Component } from 'v-money3'
 import ConfirmDelete from '@/components/ConfirmDelete.vue'
@@ -71,19 +71,29 @@ const newIncome = async () => {
   await goToForm()
 }
 
-const updateExpected = (event: Event) => {
-  incomeStore.setExpectedStatements(Number((event.target as HTMLInputElement).value))
+// The count is saved when the field is committed (change, not every keystroke): each save is a
+// round trip, and the saved number only changes after the server confirms it.
+const expectedInput = ref(String(incomeStore.expectedStatements))
+watch(
+  () => incomeStore.expectedStatements,
+  (count) => (expectedInput.value = String(count)),
+)
+const saveExpected = async () => {
+  await incomeStore.setExpectedStatements(Number(expectedInput.value))
+  // The store keeps the number between 0 and 20: show the one it kept ("25" typed at 20 stays 20).
+  expectedInput.value = String(incomeStore.expectedStatements)
 }
 
-// The store keeps the number between 0 and 20: show the one it kept ("25" typed at 20 stays 20).
-const syncExpected = (event: Event) => {
-  ;(event.target as HTMLInputElement).value = String(incomeStore.expectedStatements)
-}
-
-const saveIncome = () => {
+const saveIncome = async () => {
+  if (incomeStore.saving) return
   const wasEditing = isEditing.value
-  if (!incomeStore.saveDraft()) return
+  if (!(await incomeStore.saveDraft())) return
   if (!wasEditing) router.push({ name: 'home' })
+}
+
+const removeRegistration = async (registrationId: number) => {
+  if (incomeStore.saving) return
+  if (await incomeStore.removeRegistration(registrationId)) confirmingDeleteId.value = null
 }
 </script>
 
@@ -113,14 +123,14 @@ const saveIncome = () => {
         </label>
         <input
           id="expected-statements"
-          :value="incomeStore.expectedStatements"
+          v-model="expectedInput"
           class="field-control count-control"
           type="number"
           min="0"
           max="20"
           inputmode="numeric"
-          @input="updateExpected"
-          @change="syncExpected"
+          :disabled="!incomeStore.loaded"
+          @change="saveExpected"
         />
         <button class="add-button" type="button" @click="newIncome">
           <span aria-hidden="true">+</span>
@@ -200,7 +210,7 @@ const saveIncome = () => {
                 :open="confirmingDeleteId === registration.id"
                 :item-label="`o lançamento ${registrationIndex + 1}`"
                 @update:open="setConfirmingDelete(registration.id, $event)"
-                @confirm="incomeStore.removeRegistration(registration.id)"
+                @confirm="removeRegistration(registration.id)"
               >
                 <p>Saem da estimativa: {{ sourceList(registration) }}.</p>
               </ConfirmDelete>
@@ -484,10 +494,11 @@ const saveIncome = () => {
       <button
         class="button add-registration-button"
         type="button"
-        :disabled="!incomeStore.canSaveDraft"
+        :disabled="!incomeStore.canSaveDraft || !incomeStore.loaded"
+        :aria-disabled="incomeStore.saving"
         @click="saveIncome"
       >
-        {{ isEditing ? 'Salvar alterações' : 'Adicionar' }}
+        {{ incomeStore.saving ? 'Salvando…' : isEditing ? 'Salvar alterações' : 'Adicionar' }}
       </button>
       <button
         v-if="isEditing"

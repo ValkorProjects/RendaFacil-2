@@ -35,7 +35,7 @@ const blankExpense = (): Omit<RegisteredExpense, 'id'> => ({
   data: '',
   descricao: '',
   recebedor: '',
-  pensaoIniciouEm2026: false,
+  pensao_iniciou_em_2026: false,
 })
 const form = reactive(blankExpense())
 const valorInput = ref('')
@@ -98,6 +98,8 @@ const preview = computed<{ effect: EfeitoDespesa | null; error: string }>(() => 
           valor_centavos: amount,
           reembolso_centavos: asksRefund.value ? cents(reembolsoInput.value) : 0,
           base_legal_ok: form.categoria === 'pensao' ? form.base_legal_ok : null,
+          recebedor: form.categoria === 'pensao' ? form.recebedor.trim() : '',
+          pensao_iniciou_em_2026: form.categoria === 'pensao' && form.pensao_iniciou_em_2026,
         },
       ),
       error: '',
@@ -112,7 +114,7 @@ const educationLabel = (personId: string) => {
 }
 const pensionReceiverWarning = computed(() => {
   const receiver = form.recebedor.trim().toLocaleLowerCase('pt-BR')
-  if (!receiver || form.pensaoIniciouEm2026) return ''
+  if (!receiver || form.pensao_iniciou_em_2026) return ''
   const dependent = allDependents.value.find(
     (item) => item.apelido.toLocaleLowerCase('pt-BR') === receiver,
   )
@@ -185,7 +187,8 @@ const validate = () => {
   return ''
 }
 
-const saveExpense = () => {
+const saveExpense = async () => {
+  if (incomeStore.saving) return
   formError.value = validate()
   if (formError.value) return
 
@@ -195,13 +198,14 @@ const saveExpense = () => {
     reembolso_centavos: asksRefund.value ? cents(reembolsoInput.value) : 0,
     base_legal_ok: form.categoria === 'pensao' ? form.base_legal_ok : null,
     recebedor: form.categoria === 'pensao' ? form.recebedor.trim() : '',
-    pensaoIniciouEm2026: form.categoria === 'pensao' && form.pensaoIniciouEm2026,
+    pensao_iniciou_em_2026: form.categoria === 'pensao' && form.pensao_iniciou_em_2026,
     descricao: form.descricao.trim(),
   }
   const saved =
     editingId.value === null
-      ? incomeStore.addExpense(expense)
-      : incomeStore.updateExpense({ ...expense, id: editingId.value })
+      ? await incomeStore.addExpense(expense)
+      : await incomeStore.updateExpense({ ...expense, id: editingId.value })
+  // A failed save keeps the form as it is; the sync banner says whether it was the connection.
   if (!saved) {
     formError.value = 'Não foi possível salvar. Confira os dados da despesa.'
     return
@@ -219,8 +223,9 @@ const editExpense = (expense: RegisteredExpense) => {
   window.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
-const remove = (expense: RegisteredExpense) => {
-  incomeStore.removeExpense(expense.id)
+const remove = async (expense: RegisteredExpense) => {
+  if (incomeStore.saving) return
+  if (!(await incomeStore.removeExpense(expense.id))) return
   confirmingId.value = null
   if (editingId.value === expense.id) resetForm()
 }
@@ -246,7 +251,7 @@ const effectLabel = (effect: EfeitoDespesa | undefined) => {
 
 const pensionWarning = (expense: RegisteredExpense) => {
   const receiver = expense.recebedor.trim().toLocaleLowerCase('pt-BR')
-  if (!receiver || expense.pensaoIniciouEm2026) return ''
+  if (!receiver || expense.pensao_iniciou_em_2026) return ''
   const match = allDependents.value.find(
     (dependent) => dependent.apelido.toLocaleLowerCase('pt-BR') === receiver,
   )
@@ -353,7 +358,7 @@ const pensionWarning = (expense: RegisteredExpense) => {
               autocomplete="off"
             />
             <label class="dependent-declaration">
-              <input v-model="form.pensaoIniciouEm2026" type="checkbox" />
+              <input v-model="form.pensao_iniciou_em_2026" type="checkbox" />
               A pensão começou em 2026
             </label>
             <p v-if="pensionReceiverWarning" class="field-warning" role="status">
@@ -418,8 +423,20 @@ const pensionWarning = (expense: RegisteredExpense) => {
 
           <div class="form-actions">
             <button class="secondary-button" type="button" @click="step = 1">Voltar</button>
-            <button class="primary-button" type="button" @click="saveExpense">
-              {{ editingId === null ? 'Adicionar despesa' : 'Salvar alterações' }}
+            <button
+              class="primary-button"
+              type="button"
+              :disabled="!incomeStore.loaded"
+              :aria-disabled="incomeStore.saving"
+              @click="saveExpense"
+            >
+              {{
+                incomeStore.saving
+                  ? 'Salvando…'
+                  : editingId === null
+                    ? 'Adicionar despesa'
+                    : 'Salvar alterações'
+              }}
             </button>
             <button
               v-if="editingId !== null"

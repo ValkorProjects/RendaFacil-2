@@ -50,19 +50,20 @@ O resultado é uma **estimativa**. O que vale é a declaração entregue à Rece
 
 Em desenvolvimento, rumo ao MVP. As funcionalidades estão organizadas em issues com o prefixo `RF-` no [GitHub](https://github.com/ValkorProjects/RendaFacil-2/issues).
 
-| Pronto                                                                                              | Em andamento ou planejado                                    |
-| --------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
-| Motor de cálculo do ajuste anual e da folha mensal, com testes de casos de referência               | Questionário inicial com triagem                             |
-| Parâmetros fiscais de 2026                                                                          | Persistência das rendas, dependentes e despesas no Supabase  |
-| Estrutura do banco e políticas RLS definidas em [`supabase/`](supabase/)                            | Publicação da Edge Function de exclusão e deploy de produção |
-| Tela de Rendas por valores mensais, com contador de empresas, 13º e PLR (dados ainda só em memória) |                                                              |
-| Home com o resultado, o status da estimativa e o detalhe do cálculo                                 |                                                              |
-| Menu: dependentes, minha conta, sobre a estimativa, privacidade, sair e excluir conta               |                                                              |
-| Cadastro, login, perfil, consentimento e política de privacidade                                    |                                                              |
-| Documentação do cálculo                                                                             |                                                              |
-| Layout base: saudação, barra inferior (Home, Rendas, Despesas, Menu)                                |                                                              |
-| Cadastro de dependentes em `/dependentes`, com acesso pelo Menu e questionário de Rendas            |                                                              |
-| Tela de Despesas com cadastro, efeito de cada despesa e barra do limite de educação                 |                                                              |
+| Pronto                                                                                   | Em andamento ou planejado                                    |
+| ---------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| Motor de cálculo do ajuste anual e da folha mensal, com testes de casos de referência    | Questionário inicial com triagem                             |
+| Parâmetros fiscais de 2026                                                               |                                                              |
+| Estrutura do banco e políticas RLS definidas em [`supabase/`](supabase/)                 | Publicação da Edge Function de exclusão e deploy de produção |
+| Tela de Rendas por valores mensais, com contador de empresas, 13º e PLR                  |                                                              |
+| Home com o resultado, o status da estimativa e o detalhe do cálculo                      |                                                              |
+| Menu: dependentes, minha conta, sobre a estimativa, privacidade, sair e excluir conta    |                                                              |
+| Cadastro, login, perfil, consentimento e política de privacidade                         |                                                              |
+| Documentação do cálculo                                                                  |                                                              |
+| Layout base: saudação, barra inferior (Home, Rendas, Despesas, Menu)                     |                                                              |
+| Cadastro de dependentes em `/dependentes`, com acesso pelo Menu e questionário de Rendas |                                                              |
+| Tela de Despesas com cadastro, efeito de cada despesa e barra do limite de educação      |                                                              |
+| Rendas, dependentes e despesas persistidos no Supabase                                   |                                                              |
 
 O cadastro de dependentes guarda apenas apelido, relação, presença em outra declaração e renda
 própria em 2026. Dependentes em outra declaração, suas rendas e despesas ficam fora do cálculo.
@@ -79,9 +80,9 @@ reembolso só é pedido nas despesas de saúde dedutíveis. Enquanto o valor é 
 quanto a despesa pode reduzir o imposto (RF-07), e uma barra mostra o uso do limite de educação de
 cada pessoa. A pensão paga só deduz com a confirmação da base legal (decisão judicial, acordo
 homologado ou escritura pública). Ao excluir um dependente, a confirmação lista suas despesas
-e informa a remoção dos rendimentos vinculados. Todos esses dados ainda ficam em memória nesta
-sessão, sem persistência após recarregar a página. O questionário inicial separado segue planejado;
-o acesso atual ao cadastro está no formulário de Rendas.
+e informa a remoção dos rendimentos vinculados. Esses dados ficam na declaração da conta e são
+carregados ao entrar. O questionário inicial separado segue planejado; o acesso atual ao cadastro
+está no formulário de Rendas.
 
 Fora do escopo do MVP: aluguel recebido, autônomo, MEI ou PJ (carnê-leão), aposentadoria, ganho de capital, bolsa de valores, renda do exterior e previdência privada. A lista completa está na [seção 9 da documentação do cálculo](docs/calculo-irpf-2026.md#9-fora-do-escopo-do-mvp).
 
@@ -242,8 +243,36 @@ As fórmulas, a tabela de parâmetros com as fontes oficiais, as regras de arred
 
 As migrations em [`supabase/migrations/`](supabase/migrations/) definem as tabelas `perfis`,
 `declaracoes`, `fontes_pagadoras`, `dependentes` e `despesas`, com políticas RLS (Row Level Security)
-para restringir o acesso aos dados do usuário autenticado. A tela de Rendas ainda mantém rendimentos
-e dependentes apenas em memória; a persistência deles no Supabase ainda está planejada.
+para restringir o acesso aos dados do usuário autenticado. A camada [`src/data/`](src/data/)
+carrega a declaração de 2026 ao entrar e persiste rendas, dependentes e despesas, incluindo pensão
+alimentícia. Os formulários mantêm os campos em caso de falha; a Home calcula sobre as linhas
+confirmadas no banco. Ao sair ou trocar de conta, o cache e os rascunhos são limpos, sem apagar
+o banco.
+
+Aplique as migrações antes de executar esta versão contra um projeto remoto (CLI v3):
+
+```bash
+npx supabase login
+npx supabase db push --remote=SEU_PROJECT_REF
+```
+
+A migração inicial [`20261119050828_persistencia_rendas.sql`](supabase/migrations/20261119050828_persistencia_rendas.sql)
+adiciona o agrupamento de rendas e a RPC `salvar_lancamentos`. A migração seguinte
+[`20261119180000_pensao_como_despesa.sql`](supabase/migrations/20261119180000_pensao_como_despesa.sql)
+registra pensão alimentícia como despesa anual, atualiza a RPC e remove o campo mensal legado.
+A RPC usa `SECURITY INVOKER`, respeita RLS e grava apenas as linhas alteradas, em uma transação.
+O app também garante a declaração na primeira gravação com `ON CONFLICT DO NOTHING`, atendendo
+contas anteriores ao trigger de cadastro.
+
+A empresa de cada fonte fica em `fontes_pagadoras.nome` (sem empresa, a categoria), o 13º, o IR do
+13º e a PLR em centavos do ano, como no informe (não divididos por 12), e o número de empresas que
+pagaram salário em `declaracoes.fontes_esperadas`, salvo quando o campo é confirmado.
+
+As rendas são gravadas em centavos **anuais**; o formulário mostra a média mensal. Valores anuais
+que não dividem por 12 são preservados exatamente enquanto o campo não muda. Despesas, inclusive
+pensão alimentícia, usam centavos anuais e guardam a data do pagamento informada na tela. A pensão é
+lançada em Despesas com o nome de quem a recebeu, se começou em 2026 e a confirmação da base legal. As relações do formulário são convertidas explicitamente
+para `conjuge` e `pais_avos`, como definido no RF-02.
 
 ### Conectar um projeto
 
@@ -292,17 +321,23 @@ da conta mostra um erro e não informa sucesso.
 
 ### Tipos do banco
 
-Para gerar os tipos do TypeScript a partir do banco:
+Os tipos em [`src/types/database.types.ts`](src/types/database.types.ts) são gerados pela CLI,
+a partir do schema público, e usados no cliente, nas consultas e na entrada do motor. Para
+reproduzir a geração local (Docker em execução):
 
 ```bash
-npx supabase login
+npx supabase db start
+npm run db:types
 ```
+
+Depois de novas migrações, aplique-as ao banco local com `npx supabase db push` antes de gerar.
+Para gerar a partir de um projeto remoto autenticado:
 
 ```bash
-npx supabase gen types typescript --project-id seu-project-ref > src/types/database.types.ts
+npm run db:types -- --remote=SEU_PROJECT_REF
 ```
 
-### Testes do banco (RLS)
+### Testes do banco (RLS e persistência)
 
 O app fala com o Supabase direto do navegador, com a chave pública. A única barreira entre um usuário e os dados de outro são as políticas de RLS e os privilégios definidos nas migrations. Se uma migration apagar uma política ou liberar um privilégio, nada no app quebra, e a falha fica aberta. Os testes em [`supabase/tests/database/`](supabase/tests/database/) conferem isso automaticamente, com [pgTAP](https://pgtap.org/), num banco criado do zero pelas migrations:
 
@@ -311,6 +346,7 @@ O app fala com o Supabase direto do navegador, com a chave pública. A única ba
 - toda tabela de `public` tem RLS ligada, nenhuma view ignora a RLS e nenhuma função `security definer` pode ser chamada por `anon` ou `authenticated`;
 - o cadastro cria o perfil e a declaração de 2026, é recusado sem o aceite da política de privacidade, e o usuário não altera nem apaga o registro do aceite;
 - apagar o usuário em `auth.users` apaga todas as linhas dele;
+- a função `salvar_lancamentos`, que grava rendas, dependentes e despesas, roda como o usuário que a chamou (a RLS vale), grava só as linhas que mudaram numa única transação, é recusada sem login e não aceita linhas de outra conta;
 - dinheiro fica só em `bigint`, e não há colunas de CPF, data de nascimento ou diagnóstico.
 
 Para rodar localmente, é preciso ter o [Docker](https://docs.docker.com/get-started/get-docker/) instalado e aberto. Suba o Postgres local (a primeira vez baixa as imagens e demora alguns minutos):

@@ -1,23 +1,30 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { databaseMock, USER_A } from '@/data/__tests__/supabaseMock'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { calcularFolhaMensal } from '@/irpf'
 import { buildTaxInput, fillIncomeFromSalary, useIncomeStore } from '@/stores/income'
 import { formatMoneyInput } from '@/utils/currency'
 import { emptyDependent, type DependentFields } from '@/utils/dependents'
 
-beforeEach(() => setActivePinia(createPinia()))
+vi.mock('@/lib/supabase', () => ({ getSupabase: () => databaseMock.client }))
 
-const setup = () => {
+beforeEach(async () => {
+  setActivePinia(createPinia())
+  databaseMock.reset()
+  await useIncomeStore().loadAccount(USER_A)
+})
+
+const setup = async () => {
   const store = useIncomeStore()
-  store.addRegistration({
+  await store.addRegistration({
     id: 100,
     incomes: [{ id: 101, category: 'clt', amount: 'R$ 10.000,00', inss: '', irrf: '' }],
   })
   return store
 }
-const addDependent = (fields: Partial<DependentFields> = {}) => {
+const addDependent = async (fields: Partial<DependentFields> = {}) => {
   const store = useIncomeStore()
-  store.saveDependent({ ...emptyDependent(), apelido: 'Lia', ...fields })
+  await store.saveDependent({ ...emptyDependent(), apelido: 'Lia', ...fields })
   return store.dependents.at(-1)!
 }
 const expense = (id: number | null, description = 'Escola') => ({
@@ -31,15 +38,15 @@ const expense = (id: number | null, description = 'Escola') => ({
   base_legal_ok: null,
   data: '2026-03-10',
   recebedor: '',
-  pensaoIniciouEm2026: false,
+  pensao_iniciou_em_2026: false,
 })
 
 describe('RF-11 · cadastro e cálculo de dependentes', () => {
-  it('salva pessoa e múltiplas rendas pelo questionário sem afetar o rascunho do titular', () => {
-    const store = setup()
+  it('salva pessoa e múltiplas rendas pelo questionário sem afetar o rascunho do titular', async () => {
+    const store = await setup()
     store.draftIncomes[0]!.amount = 'R$ 3.000,00'
     expect(
-      store.saveDependentWithIncomes(
+      await store.saveDependentWithIncomes(
         { ...emptyDependent(), apelido: 'Lia', teve_renda_propria: true },
         [
           { id: -1, category: 'clt', amount: 'R$ 2.000,00', inss: 'R$ 100,00', irrf: '' },
@@ -57,10 +64,10 @@ describe('RF-11 · cadastro e cálculo de dependentes', () => {
     expect(store.draftIncomes[0]!.amount).toBe('R$ 3.000,00')
   })
 
-  it('reabre e edita as rendas existentes sem duplicar nem alterar rendas de outras pessoas', () => {
-    const store = setup()
-    const lia = addDependent({ teve_renda_propria: true })
-    store.addRegistration({
+  it('reabre e edita as rendas existentes sem duplicar nem alterar rendas de outras pessoas', async () => {
+    const store = await setup()
+    const lia = await addDependent({ teve_renda_propria: true })
+    await store.addRegistration({
       id: 200,
       incomes: [
         {
@@ -78,17 +85,19 @@ describe('RF-11 · cadastro e cálculo de dependentes', () => {
       .incomesForDependent(lia.id)
       .map((income) => ({ ...income, amount: 'R$ 1.500,00' }))
     expect(store.incomesForDependent(lia.id)[0]!.amount).toBe('R$ 1.000,00')
-    expect(store.saveDependentWithIncomes({ ...lia, apelido: 'Lili' }, draft, lia.id)).toBe(true)
+    expect(await store.saveDependentWithIncomes({ ...lia, apelido: 'Lili' }, draft, lia.id)).toBe(
+      true,
+    )
     expect(store.incomesForDependent(lia.id)).toHaveLength(1)
     expect(store.incomesForDependent(lia.id)[0]).toMatchObject({ id: 201, amount: 'R$ 1.500,00' })
     expect(store.registrations[1]!.incomes[1]).toMatchObject({ id: 202, amount: 'R$ 500,00' })
     expect(store.dependents[0]!.apelido).toBe('Lili')
   })
 
-  it('não salva parcialmente quando há rendimento inválido', () => {
-    const store = setup()
+  it('não salva parcialmente quando há rendimento inválido', async () => {
+    const store = await setup()
     expect(
-      store.saveDependentWithIncomes(
+      await store.saveDependentWithIncomes(
         { ...emptyDependent(), apelido: 'Lia', teve_renda_propria: true },
         [{ id: -1, category: 'clt', amount: 'R$ 100,00', inss: 'R$ 101,00', irrf: '' }],
       ),
@@ -96,7 +105,7 @@ describe('RF-11 · cadastro e cálculo de dependentes', () => {
     expect(store.dependents).toEqual([])
     expect(store.registrations).toHaveLength(1)
     expect(
-      store.saveDependentWithIncomes(
+      await store.saveDependentWithIncomes(
         { ...emptyDependent(), apelido: 'Lia', teve_renda_propria: true },
         [{ id: 101, category: 'clt', amount: 'R$ 100,00', inss: '', irrf: '' }],
       ),
@@ -104,13 +113,13 @@ describe('RF-11 · cadastro e cálculo de dependentes', () => {
     expect(store.dependents).toEqual([])
   })
 
-  it('permite preencher depois e mantém provisória até completar o questionário', () => {
-    const store = setup()
+  it('permite preencher depois e mantém provisória até completar o questionário', async () => {
+    const store = await setup()
     const fields = { ...emptyDependent(), apelido: 'Lia', teve_renda_propria: true }
-    expect(store.saveDependentWithIncomes(fields, [])).toBe(true)
+    expect(await store.saveDependentWithIncomes(fields, [])).toBe(true)
     expect(store.taxEstimate).toMatchObject({ ok: true, provisional: true })
     const lia = store.dependents[0]!
-    store.saveDependentWithIncomes(
+    await store.saveDependentWithIncomes(
       fields,
       [{ id: -1, category: 'clt', amount: 'R$ 100,00', inss: '', irrf: '' }],
       lia.id,
@@ -118,10 +127,10 @@ describe('RF-11 · cadastro e cálculo de dependentes', () => {
     expect(store.taxEstimate).toMatchObject({ ok: true, provisional: false })
   })
 
-  it('cadastra o mínimo, valida o apelido e edita sem trocar o vínculo', () => {
-    const store = setup()
-    expect(store.saveDependent(emptyDependent())).toBe(false)
-    const dependent = addDependent({ apelido: '  Lia  ' })
+  it('cadastra o mínimo, valida o apelido e edita sem trocar o vínculo', async () => {
+    const store = await setup()
+    expect(await store.saveDependent(emptyDependent())).toBe(false)
+    const dependent = await addDependent({ apelido: '  Lia  ' })
     expect(dependent.apelido).toBe('Lia')
     expect(Object.keys(dependent).sort()).toEqual([
       'apelido',
@@ -130,8 +139,8 @@ describe('RF-11 · cadastro e cálculo de dependentes', () => {
       'relacao',
       'teve_renda_propria',
     ])
-    store.addExpense(expense(dependent.id))
-    store.saveDependent({ ...dependent, apelido: 'Lili', relacao: 'outro' }, dependent.id)
+    await store.addExpense(expense(dependent.id))
+    await store.saveDependent({ ...dependent, apelido: 'Lili', relacao: 'outro' }, dependent.id)
     expect(store.dependents).toHaveLength(1)
     expect(store.dependents[0]).toMatchObject({
       id: dependent.id,
@@ -141,16 +150,16 @@ describe('RF-11 · cadastro e cálculo de dependentes', () => {
     expect(store.expensesForDependent(dependent.id)).toHaveLength(1)
   })
 
-  it('exclui da conta dependente em outra declaração, incluindo renda e despesas', () => {
-    const store = setup()
-    addDependent()
-    const excluded = addDependent({
+  it('exclui da conta dependente em outra declaração, incluindo renda e despesas', async () => {
+    const store = await setup()
+    await addDependent()
+    const excluded = await addDependent({
       apelido: 'Teo',
       em_outra_declaracao: true,
       teve_renda_propria: true,
     })
-    store.addExpense(expense(excluded.id))
-    store.addRegistration({
+    await store.addExpense(expense(excluded.id))
+    await store.addRegistration({
       id: 200,
       incomes: [
         {
@@ -172,33 +181,33 @@ describe('RF-11 · cadastro e cálculo de dependentes', () => {
     })
     expect(store.summaryPayroll).toHaveLength(1)
     expect(store.pendingDependents).toEqual([])
-    store.saveDependent({ ...excluded, em_outra_declaracao: false }, excluded.id)
+    await store.saveDependent({ ...excluded, em_outra_declaracao: false }, excluded.id)
     expect(store.dependentCount).toBe(2)
     expect(store.taxableTotal).toBe(14_400_000)
     expect(store.taxEstimate).toMatchObject({ ok: true, result: { deducaoDependentes: 455_016 } })
   })
 
-  it('mantém provisória até salvar o informe da pessoa certa e reabre ao apagar', () => {
-    const store = setup()
-    const dependent = addDependent({ teve_renda_propria: true })
+  it('mantém provisória até salvar o informe da pessoa certa e reabre ao apagar', async () => {
+    const store = await setup()
+    const dependent = await addDependent({ teve_renda_propria: true })
     expect(store.taxEstimate).toMatchObject({ ok: true, provisional: true })
     Object.assign(store.draftIncomes[0]!, { amount: 'R$ 1.000,00', dependentId: dependent.id })
     expect(store.summaryTaxEstimate).toMatchObject({ ok: true, provisional: true })
-    store.saveDraft()
+    await store.saveDraft()
     expect(store.taxEstimate).toMatchObject({
       ok: true,
       provisional: false,
       result: { rendimentos: 13_200_000 },
     })
-    store.removeRegistration(store.registrations.at(-1)!.id)
+    await store.removeRegistration(store.registrations.at(-1)!.id)
     expect(store.taxEstimate).toMatchObject({ ok: true, provisional: true })
   })
 
-  it('informe de outra pessoa não resolve a pendência; renda isenta resolve sem tributar', () => {
-    const store = setup()
-    const lia = addDependent({ teve_renda_propria: true })
-    const teo = addDependent({ apelido: 'Teo', teve_renda_propria: true })
-    store.addRegistration({
+  it('informe de outra pessoa não resolve a pendência; renda isenta resolve sem tributar', async () => {
+    const store = await setup()
+    const lia = await addDependent({ teve_renda_propria: true })
+    const teo = await addDependent({ apelido: 'Teo', teve_renda_propria: true })
+    await store.addRegistration({
       id: 200,
       incomes: [
         {
@@ -214,19 +223,19 @@ describe('RF-11 · cadastro e cálculo de dependentes', () => {
     expect(store.pendingDependents.map((dependent) => dependent.id)).toEqual([lia.id])
     expect(store.exemptTotal).toBe(1_080_000)
     expect(store.taxableTotal).toBe(12_000_000)
-    store.saveDependent({ ...lia, teve_renda_propria: false }, lia.id)
+    await store.saveDependent({ ...lia, teve_renda_propria: false }, lia.id)
     expect(store.taxEstimate).toMatchObject({ ok: true, provisional: false })
   })
 
-  it('remove apenas despesas e rendas vinculadas, preservando os demais cadastros', () => {
-    const store = setup()
-    const lia = addDependent()
-    const teo = addDependent({ apelido: 'Teo' })
-    store.addExpense(expense(lia.id, 'Escola Lia'))
-    store.addExpense(expense(lia.id, 'Material Lia'))
-    store.addExpense(expense(teo.id, 'Escola Teo'))
-    store.addExpense(expense(null, 'Faculdade titular'))
-    store.addRegistration({
+  it('remove apenas despesas e rendas vinculadas, preservando os demais cadastros', async () => {
+    const store = await setup()
+    const lia = await addDependent()
+    const teo = await addDependent({ apelido: 'Teo' })
+    await store.addExpense(expense(lia.id, 'Escola Lia'))
+    await store.addExpense(expense(lia.id, 'Material Lia'))
+    await store.addExpense(expense(teo.id, 'Escola Teo'))
+    await store.addExpense(expense(null, 'Faculdade titular'))
+    await store.addRegistration({
       id: 200,
       incomes: [
         { id: 201, category: 'clt', amount: 'R$ 900,00', inss: '', irrf: '', dependentId: lia.id },
@@ -237,7 +246,7 @@ describe('RF-11 · cadastro e cálculo de dependentes', () => {
       'Escola Lia',
       'Material Lia',
     ])
-    store.removeDependent(lia.id)
+    await store.removeDependent(lia.id)
     expect(store.expenses.map((item) => item.descricao)).toEqual([
       'Escola Teo',
       'Faculdade titular',
@@ -248,20 +257,20 @@ describe('RF-11 · cadastro e cálculo de dependentes', () => {
     expect(store.taxEstimate?.ok).toBe(true)
   })
 
-  it('mantém o limite de educação separado por beneficiário', () => {
-    const store = setup()
-    const lia = addDependent()
-    const teo = addDependent({ apelido: 'Teo' })
-    store.addExpense(expense(lia.id))
-    store.addExpense(expense(teo.id))
+  it('mantém o limite de educação separado por beneficiário', async () => {
+    const store = await setup()
+    const lia = await addDependent()
+    const teo = await addDependent({ apelido: 'Teo' })
+    await store.addExpense(expense(lia.id))
+    await store.addExpense(expense(teo.id))
     const input = buildTaxInput(store.registrations, store.household)
     expect(input.educacao.map((item) => item.pessoa)).toEqual([String(lia.id), String(teo.id)])
     expect(store.taxEstimate).toMatchObject({ ok: true, result: { totalEducacao: 712_300 } })
   })
 
-  it('não aplica dependentes do titular à folha de um dependente', () => {
-    const store = setup()
-    const lia = addDependent()
+  it('não aplica dependentes do titular à folha de um dependente', async () => {
+    const store = await setup()
+    const lia = await addDependent()
     Object.assign(store.draftIncomes[0]!, { amount: 'R$ 6.500,00', dependentId: lia.id })
     expect(store.summaryPayroll.at(-1)).toMatchObject({
       dependentes: 0,
@@ -269,9 +278,9 @@ describe('RF-11 · cadastro e cálculo de dependentes', () => {
     })
   })
 
-  it('calcula INSS e IR da renda do dependente pelo salário, sem os dependentes do titular', () => {
-    addDependent()
-    addDependent({ apelido: 'Bia' })
+  it('calcula INSS e IR da renda do dependente pelo salário, sem os dependentes do titular', async () => {
+    await addDependent()
+    await addDependent({ apelido: 'Bia' })
     const income = { id: -1, category: 'clt' as const, amount: 'R$ 6.500,00', inss: '', irrf: '' }
 
     expect(fillIncomeFromSalary(income, 0)).toBe('')
@@ -291,10 +300,10 @@ describe('RF-11 · cadastro e cálculo de dependentes', () => {
     expect(income).toMatchObject({ inss: '', irrf: '' })
   })
 
-  it('limpa despesas, dependentes e pendências ao limpar a conta', () => {
-    const store = setup()
-    const lia = addDependent({ teve_renda_propria: true })
-    store.addExpense(expense(lia.id))
+  it('limpa despesas, dependentes e pendências ao limpar a conta', async () => {
+    const store = await setup()
+    const lia = await addDependent({ teve_renda_propria: true })
+    await store.addExpense(expense(lia.id))
     store.clearAccountData()
     expect(store.dependents).toEqual([])
     expect(store.expenses).toEqual([])

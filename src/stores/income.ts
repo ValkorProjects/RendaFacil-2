@@ -1,9 +1,19 @@
-import { computed, ref } from 'vue'
+import { computed, ref, shallowRef } from 'vue'
+import { getSupabase } from '@/lib/supabase'
+import {
+  createDeclarationRepository,
+  emptyDeclaration,
+  montarEntradaDoBanco,
+  type DeclarationData,
+} from '@/data/declarations'
+import { createIncomeMapper, annualIncomeAmounts } from '@/data/incomeMapper'
+import type { Tables } from '@/types/database.types'
 import { defineStore } from 'pinia'
 import {
   calcularAjusteAnual,
   calcularEfeitos,
   calcularFolhaMensal,
+  dependentePodeSerDeclarado,
   montarEntrada,
   parametros,
   type DadosDeclaracao,
@@ -31,10 +41,8 @@ export interface RegisteredExpense extends RegistroDespesa {
   data: string
   // Optional; never a diagnosis.
   descricao: string
-  // Alimony only: who received it, and whether it started in 2026 (the one year the receiver may
-  // also be a dependent).
-  recebedor: string
-  pensaoIniciouEm2026: boolean
+  // `recebedor` and `pensao_iniciou_em_2026` come from the engine's row: alimony only, who received
+  // it and whether it started in 2026 (the one year the receiver may also be a dependent).
 }
 
 // One income source with its monthly figures (the informe's yearly ones ÷ 12).
@@ -48,6 +56,11 @@ export interface RegisteredIncomeEntry {
   irrf: string
   // Missing on older session entries means the holder.
   dependentId?: number | null
+  // Exact annual cents read from the database, kept until the monthly field changes.
+  annualAmounts?: Pick<
+    Tables<'fontes_pagadoras'>,
+    'rendimentos_centavos' | 'previdencia_centavos' | 'irrf_centavos'
+  >
   // Quadro 1: the company's name.
   employer?: string
   // Quadro 5, yearly amounts: exclusive taxation, kept and shown but outside the adjustment.
@@ -236,7 +249,12 @@ export const buildPayrollRows = (
   )
 
 export const validDependents = (household: Household) =>
-  household.dependents.filter((dependent) => !dependent.em_outra_declaracao)
+  household.dependents.filter((dependent) =>
+    dependentePodeSerDeclarado(
+      { id: String(dependent.id), em_outra_declaracao: dependent.em_outra_declaracao },
+      household.expenses ?? [],
+    ),
+  )
 
 export const isIncludedIncome = (income: RegisteredIncomeEntry, household: Household) =>
   income.dependentId == null ||
@@ -272,9 +290,7 @@ export const buildDeclarationData = (
       )
       .map((income) => ({
         dependente_id: income.dependentId == null ? null : String(income.dependentId),
-        rendimentos_centavos: annualize(cents(income.amount)),
-        previdencia_centavos: annualize(cents(income.inss)),
-        irrf_centavos: annualize(cents(income.irrf)),
+        ...annualIncomeAmounts(income),
       })),
   ),
   dependentes: household.dependents.map((dependent) => ({
@@ -310,6 +326,9 @@ const expenseError = (
     !dependents.some((dependent) => String(dependent.id) === expense.dependente_id)
   ) {
     return 'Escolha um dependente cadastrado.'
+  }
+  if (expense.categoria === 'pensao' && !expense.recebedor.trim()) {
+    return 'Informe quem recebeu a pensão.'
   }
   if (expense.descricao.trim().length > 120) {
     return 'A descrição deve ter no máximo 120 caracteres.'
@@ -403,13 +422,23 @@ export const incomeCategoryLabels: Record<IncomeCategory, string> = {
 export const useIncomeStore = defineStore('income', () => {
   const registrations = ref<IncomeRegistration[]>([])
   let nextDraftId = 1
+  const accountId = ref<string | null>(null)
+  let accountVersion = 0
+  const loading = ref(false)
+  const loaded = ref(false)
+  const saving = ref(false)
+  const loadError = ref('')
+  const saveError = ref('')
+  const savedRows = shallowRef<DeclarationData>(emptyDeclaration())
+  let mapper = createIncomeMapper(() => nextDraftId++)
+  const repository = () => createDeclarationRepository(getSupabase())
 
   // The income sources being typed, saved as one registration by "Adicionar".
   const draftIncomes = ref<RegisteredIncomeEntry[]>([newIncomeEntry(nextDraftId++)])
   const draftEditingRegistrationId = ref<number | null>(null)
 
-  // The declaration's dependents and expenses (see `Household`): they count at once and stay
-  // when a registration is saved.
+  // Saved dependents and expenses belong to the declaration: they count at once and stay when a
+  // registration is saved. The Home estimate reads only server-confirmed rows.
   const expenses = ref<RegisteredExpense[]>([])
   const dependents = ref<RegisteredDependent[]>([])
   const hasDependents = computed(() => dependents.value.length > 0)
@@ -418,25 +447,25 @@ export const useIncomeStore = defineStore('income', () => {
     expenses: expenses.value,
   }))
 
-  const addRegistration = (registration: IncomeRegistration) => {
-    registrations.value.push({
+  const addRegistration = (state: MutationState, registration: IncomeRegistration) => {
+    state.registrations.push({
       id: registration.id,
       incomes: registration.incomes.map((income) => ({ ...income })),
     })
   }
 
-  const removeRegistration = (id: number) => {
-    registrations.value = registrations.value.filter((registration) => registration.id !== id)
+  const removeRegistration = (state: MutationState, id: number) => {
+    state.registrations = state.registrations.filter((registration) => registration.id !== id)
     // The lançamento being edited is gone: leave edit mode, or "Salvar alterações" would bring it
     // back.
-    if (draftEditingRegistrationId.value === id) resetDraft()
+    if (state.editingId === id) resetCandidateDraft(state)
   }
 
-  const updateRegistration = (registration: IncomeRegistration) => {
-    const index = registrations.value.findIndex((item) => item.id === registration.id)
+  const updateRegistration = (state: MutationState, registration: IncomeRegistration) => {
+    const index = state.registrations.findIndex((item) => item.id === registration.id)
     if (index < 0) return
 
-    registrations.value[index] = {
+    state.registrations[index] = {
       id: registration.id,
       incomes: registration.incomes.map((income) => ({ ...income })),
     }
@@ -471,13 +500,14 @@ export const useIncomeStore = defineStore('income', () => {
     }
   }
 
-  const saveDependent = (fields: DependentFields, id?: number) => {
+  const saveDependent = (state: MutationState, fields: DependentFields, id?: number) => {
     if (dependentError(fields)) return false
-    const index = id === undefined ? -1 : dependents.value.findIndex((item) => item.id === id)
+    const index =
+      id === undefined ? -1 : state.household.dependents.findIndex((item) => item.id === id)
     if (id !== undefined && index < 0) return false
-    const dependent = { ...fields, apelido: fields.apelido.trim(), id: id ?? nextDraftId++ }
-    if (index < 0) dependents.value.push(dependent)
-    else dependents.value[index] = dependent
+    const dependent = { ...fields, apelido: fields.apelido.trim(), id: id ?? state.nextDraftId++ }
+    if (index < 0) state.household.dependents.push(dependent)
+    else state.household.dependents[index] = dependent
     return true
   }
 
@@ -489,11 +519,17 @@ export const useIncomeStore = defineStore('income', () => {
   // The dependent questionnaire has its own draft. Validate everything before saving either
   // the person or their incomes, and keep the holder's unfinished Rendas form untouched.
   const saveDependentWithIncomes = (
+    state: MutationState,
     fields: DependentFields,
     incomes: readonly RegisteredIncomeEntry[],
     id?: number,
   ) => {
-    const existing = id === undefined ? [] : incomesForDependent(id)
+    const existing =
+      id === undefined
+        ? []
+        : state.registrations.flatMap((group) =>
+            group.incomes.filter((income) => income.dependentId === id),
+          )
     if (
       new Set(incomes.map((income) => income.id)).size !== incomes.length ||
       incomes.some(
@@ -506,9 +542,9 @@ export const useIncomeStore = defineStore('income', () => {
       )
     )
       return false
-    if (!saveDependent(fields, id)) return false
-    const dependentId = id ?? dependents.value[dependents.value.length - 1]!.id
-    for (const registration of registrations.value) {
+    if (!saveDependent(state, fields, id)) return false
+    const dependentId = id ?? state.household.dependents[state.household.dependents.length - 1]!.id
+    for (const registration of state.registrations) {
       registration.incomes = registration.incomes.map((income) => {
         const replacement = incomes.find((entry) => entry.id === income.id)
         return income.dependentId === dependentId && replacement
@@ -518,8 +554,8 @@ export const useIncomeStore = defineStore('income', () => {
     }
     const added = incomes
       .filter((income) => income.id < 0)
-      .map((income) => ({ ...income, id: nextDraftId++, dependentId }))
-    if (added.length) addRegistration({ id: nextDraftId++, incomes: added })
+      .map((income) => ({ ...income, id: state.nextDraftId++, dependentId }))
+    if (added.length) addRegistration(state, { id: state.nextDraftId++, incomes: added })
     return true
   }
 
@@ -527,17 +563,21 @@ export const useIncomeStore = defineStore('income', () => {
     expenses.value.filter((expense) => expense.dependente_id === String(id))
 
   // Called only after the inline confirmation. Linked incomes cannot become holder incomes.
-  const removeDependent = (id: number) => {
-    expenses.value = expenses.value.filter((expense) => expense.dependente_id !== String(id))
-    registrations.value = registrations.value
+  const removeDependent = (state: MutationState, id: number) => {
+    state.household.expenses = state.household.expenses.filter(
+      (expense) => expense.dependente_id !== String(id),
+    )
+    state.registrations = state.registrations
       .map((registration) => ({
         ...registration,
         incomes: registration.incomes.filter((income) => income.dependentId !== id),
       }))
       .filter((registration) => registration.incomes.length > 0)
-    draftIncomes.value = draftIncomes.value.filter((income) => income.dependentId !== id)
-    if (!draftIncomes.value.length) resetDraft()
-    dependents.value = dependents.value.filter((dependent) => dependent.id !== id)
+    state.draftIncomes = state.draftIncomes.filter((income) => income.dependentId !== id)
+    if (!state.draftIncomes.length) resetCandidateDraft(state)
+    state.household.dependents = state.household.dependents.filter(
+      (dependent) => dependent.id !== id,
+    )
   }
 
   const cleanExpense = (expense: Omit<RegisteredExpense, 'id'>) => ({
@@ -545,30 +585,28 @@ export const useIncomeStore = defineStore('income', () => {
     descricao: expense.descricao.trim(),
     recebedor: expense.recebedor.trim(),
   })
-  const addExpense = (expense: Omit<RegisteredExpense, 'id'>) => {
-    if (expenseError(expense, dependents.value)) return false
-    expenses.value.push({ ...cleanExpense(expense), id: nextDraftId++ })
+  const addExpense = (state: MutationState, expense: Omit<RegisteredExpense, 'id'>) => {
+    if (expenseError(expense, state.household.dependents)) return false
+    state.household.expenses.push({ ...cleanExpense(expense), id: state.nextDraftId++ })
     return true
   }
-  const updateExpense = (expense: RegisteredExpense) => {
-    const index = expenses.value.findIndex((item) => item.id === expense.id)
-    if (index < 0 || expenseError(expense, dependents.value)) return false
-    expenses.value[index] = { ...cleanExpense(expense), id: expense.id }
+  const updateExpense = (state: MutationState, expense: RegisteredExpense) => {
+    const index = state.household.expenses.findIndex((item) => item.id === expense.id)
+    if (index < 0 || expenseError(expense, state.household.dependents)) return false
+    state.household.expenses[index] = { ...cleanExpense(expense), id: expense.id }
     return true
   }
-  const removeExpense = (id: number) => {
-    expenses.value = expenses.value.filter((expense) => expense.id !== id)
+  const removeExpense = (state: MutationState, id: number) => {
+    state.household.expenses = state.household.expenses.filter((expense) => expense.id !== id)
   }
 
   const draftTaxableTotal = computed(() =>
-    annualize(
-      draftIncomes.value
-        .filter(
-          (income) =>
-            isIncludedIncome(income, household.value) && income.category !== 'pensaoAlimenticia',
-        )
-        .reduce((total, income) => total + cents(income.amount), 0),
-    ),
+    draftIncomes.value
+      .filter(
+        (income) =>
+          isIncludedIncome(income, household.value) && income.category !== 'pensaoAlimenticia',
+      )
+      .reduce((total, income) => total + annualIncomeAmounts(income).rendimentos_centavos, 0),
   )
 
   const canSaveDraft = computed(
@@ -583,6 +621,15 @@ export const useIncomeStore = defineStore('income', () => {
   }
 
   const clearAccountData = () => {
+    accountVersion++
+    accountId.value = null
+    loaded.value = false
+    loading.value = false
+    saving.value = false
+    loadError.value = ''
+    saveError.value = ''
+    savedRows.value = emptyDeclaration()
+    mapper = createIncomeMapper(() => nextDraftId++)
     registrations.value = []
     resetDraft()
     dependents.value = []
@@ -593,29 +640,28 @@ export const useIncomeStore = defineStore('income', () => {
   // RF-12: how many companies paid the holder a salary ("Quantas empresas te pagaram salário em
   // 2026?", `declaracoes.fontes_esperadas`). Editable; missing ones keep the estimate provisional.
   const expectedStatements = ref(1)
-  const setExpectedStatements = (count: number) => {
-    expectedStatements.value = Math.max(0, Math.min(20, Math.floor(Number(count) || 0)))
-  }
+  const clampExpectedStatements = (count: number) =>
+    Math.max(0, Math.min(20, Math.floor(Number(count) || 0)))
   const statementCount = computed(() => holderStatementCount(registrations.value))
 
-  const saveDraft = () => {
+  const saveDraft = (state: MutationState) => {
     if (!canSaveDraft.value) return false
 
     const registration: IncomeRegistration = {
       // A counter, not Date.now(): two saves in the same millisecond would share an id.
-      id: draftEditingRegistrationId.value ?? nextDraftId++,
-      incomes: draftIncomes.value
+      id: state.editingId ?? state.nextDraftId++,
+      incomes: state.draftIncomes
         .filter((income) => cents(income.amount) > 0)
         .map((income) => ({ ...income })),
     }
 
-    const registrationIndex = registrations.value.findIndex((item) => item.id === registration.id)
+    const registrationIndex = state.registrations.findIndex((item) => item.id === registration.id)
     if (registrationIndex >= 0) {
-      registrations.value[registrationIndex] = registration
+      state.registrations[registrationIndex] = registration
     } else {
-      addRegistration(registration)
+      addRegistration(state, registration)
     }
-    resetDraft()
+    resetCandidateDraft(state)
     return true
   }
 
@@ -635,23 +681,19 @@ export const useIncomeStore = defineStore('income', () => {
     includedIncomes.value.map((income) => ({
       id: 'income-' + income.id,
       label: sourceTitle(income) + ' · ' + incomeOwner(income),
-      amount: String(annualize(cents(income.amount))),
+      amount: String(annualIncomeAmounts(income).rendimentos_centavos),
       icon: 'income' as const,
     })),
   )
   const taxableTotal = computed(() =>
-    annualize(
-      includedIncomes.value
-        .filter((income) => income.category !== 'pensaoAlimenticia')
-        .reduce((total, income) => total + cents(income.amount), 0),
-    ),
+    includedIncomes.value
+      .filter((income) => income.category !== 'pensaoAlimenticia')
+      .reduce((total, income) => total + annualIncomeAmounts(income).rendimentos_centavos, 0),
   )
   const exemptTotal = computed(() =>
-    annualize(
-      includedIncomes.value
-        .filter((income) => income.category === 'pensaoAlimenticia')
-        .reduce((total, income) => total + cents(income.amount), 0),
-    ),
+    includedIncomes.value
+      .filter((income) => income.category === 'pensaoAlimenticia')
+      .reduce((total, income) => total + annualIncomeAmounts(income).rendimentos_centavos, 0),
   )
   // RF-12: 13º and PLR are kept and shown, but they don't enter the adjustment.
   const exclusiveTaxationTotal = computed(() =>
@@ -665,15 +707,13 @@ export const useIncomeStore = defineStore('income', () => {
     ),
   )
   const savedTaxableTotal = computed(() =>
-    annualize(
-      savedWithoutEdited.value
-        .flatMap((registration) => registration.incomes)
-        .filter(
-          (income) =>
-            isIncludedIncome(income, household.value) && income.category !== 'pensaoAlimenticia',
-        )
-        .reduce((total, income) => total + cents(income.amount), 0),
-    ),
+    savedWithoutEdited.value
+      .flatMap((registration) => registration.incomes)
+      .filter(
+        (income) =>
+          isIncludedIncome(income, household.value) && income.category !== 'pensaoAlimenticia',
+      )
+      .reduce((total, income) => total + annualIncomeAmounts(income).rendimentos_centavos, 0),
   )
   const summaryTaxableTotal = computed(() => savedTaxableTotal.value + draftTaxableTotal.value)
   const dependentCount = computed(() => validDependents(household.value).length)
@@ -686,7 +726,20 @@ export const useIncomeStore = defineStore('income', () => {
     incomes: draftIncomes.value,
   }))
 
-  const taxEstimate = computed(() => estimateTax(registrations.value, household.value))
+  const taxEstimate = computed<TaxEstimate | null>(() => {
+    if (!loaded.value) return null
+    try {
+      const input = montarEntradaDoBanco(savedRows.value)
+      if (!input.fontes.some((source) => source.rendimentos > 0)) return null
+      return {
+        ok: true,
+        result: calcularAjusteAnual(input),
+        provisional: pendingDependents.value.length > 0,
+      }
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) }
+    }
+  })
   // The Home shows what is saved: the payslip rows and the pending reasons of the saved data.
   const payroll = computed(() => buildPayrollRows(registrations.value, household.value))
   const estimateStatus = computed(() =>
@@ -734,7 +787,125 @@ export const useIncomeStore = defineStore('income', () => {
     return estimate
   })
 
+  // Local drafts and saved rows have separate lifetimes. Never replace a draft on reload/failure.
+  const applyRows = (rows: DeclarationData) => {
+    const state = mapper.fromRows(rows)
+    registrations.value = state.registrations
+    dependents.value = state.household.dependents
+    expenses.value = state.household.expenses ?? []
+    expectedStatements.value = state.expectedStatements
+    savedRows.value = rows
+  }
+  const loadAccount = async (userId: string) => {
+    if (accountId.value === userId && (loaded.value || loading.value)) return
+    if (accountId.value !== userId) clearAccountData()
+    accountId.value = userId
+    const version = accountVersion
+    loading.value = true
+    loadError.value = ''
+    try {
+      const rows = await repository().load(userId)
+      if (version !== accountVersion) return
+      applyRows(rows)
+      // The input stays usable during loading; don't overwrite anything already typed.
+      loaded.value = true
+    } catch (error: unknown) {
+      console.error('Falha ao carregar declaração:', error)
+      if (version === accountVersion)
+        loadError.value =
+          'Não foi possível carregar seus dados. Verifique a conexão e tente novamente.'
+    } finally {
+      if (version === accountVersion) loading.value = false
+    }
+  }
+  const retryLoad = () => (accountId.value ? loadAccount(accountId.value) : Promise.resolve())
+
+  // Apply the form rules to a detached candidate. Saved state changes only after the server confirms.
+  type MutationState = {
+    registrations: IncomeRegistration[]
+    household: Household & { expenses: RegisteredExpense[] }
+    draftIncomes: RegisteredIncomeEntry[]
+    editingId: number | null
+    nextDraftId: number
+    expectedStatements: number
+  }
+  const resetCandidateDraft = (state: MutationState) => {
+    state.draftIncomes = [newIncomeEntry(state.nextDraftId++)]
+    state.editingId = null
+  }
+  const snapshot = () =>
+    JSON.parse(
+      JSON.stringify({
+        registrations: registrations.value,
+        household: household.value,
+        draftIncomes: draftIncomes.value,
+        editingId: draftEditingRegistrationId.value,
+        nextDraftId,
+        expectedStatements: expectedStatements.value,
+      }),
+    ) as MutationState
+  const restore = (state: ReturnType<typeof snapshot>) => {
+    registrations.value = state.registrations
+    dependents.value = state.household.dependents
+    expenses.value = state.household.expenses ?? []
+    draftIncomes.value = state.draftIncomes
+    draftEditingRegistrationId.value = state.editingId
+    nextDraftId = state.nextDraftId
+    expectedStatements.value = state.expectedStatements
+  }
+  const persist = async (change: (state: MutationState) => boolean | void) => {
+    if (saving.value) return false
+    if (!accountId.value || !loaded.value) {
+      saveError.value = 'Aguarde o carregamento dos dados da sua conta antes de salvar.'
+      return false
+    }
+    saveError.value = ''
+    const before = snapshot()
+    const candidate = snapshot()
+    if (change(candidate) === false) return false
+    const version = accountVersion
+    const owner = accountId.value
+    saving.value = true
+    try {
+      const rows = await repository().save(
+        owner,
+        savedRows.value,
+        mapper.toRows(candidate, savedRows.value, owner),
+      )
+      if (version !== accountVersion) return false
+      const draftChanged =
+        JSON.stringify(candidate.draftIncomes) !== JSON.stringify(before.draftIncomes)
+      const currentDraft = draftIncomes.value
+      restore(candidate)
+      if (!draftChanged) draftIncomes.value = currentDraft
+      applyRows(rows)
+      return true
+    } catch (error: unknown) {
+      console.error('Falha ao salvar declaração:', error)
+      if (version === accountVersion)
+        saveError.value =
+          'Não foi possível salvar. Seus campos foram mantidos; verifique a conexão e tente novamente.'
+      return false
+    } finally {
+      if (version === accountVersion) saving.value = false
+    }
+  }
+  // The count is saved with the declaration; an unchanged number saves nothing.
+  const setExpectedStatements = (count: number) =>
+    persist((state) => {
+      const next = clampExpectedStatements(count)
+      if (next === state.expectedStatements) return false
+      state.expectedStatements = next
+    })
   return {
+    accountId,
+    loading,
+    loaded,
+    saving,
+    loadError,
+    saveError,
+    loadAccount,
+    retryLoad,
     registrations,
     items,
     taxableTotal,
@@ -751,23 +922,32 @@ export const useIncomeStore = defineStore('income', () => {
     summaryTaxEstimate,
     summaryPayroll,
     summaryInssWarning,
-    addRegistration,
-    removeRegistration,
-    updateRegistration,
+    addRegistration: (registration: IncomeRegistration) =>
+      persist((state) => addRegistration(state, registration)),
+    removeRegistration: (id: number) => persist((state) => removeRegistration(state, id)),
+    updateRegistration: (registration: IncomeRegistration) =>
+      persist((state) => updateRegistration(state, registration)),
     beginEditRegistration,
     cancelEdit: resetDraft,
     hasDependents,
     dependents,
     household,
-    saveDependent,
-    saveDependentWithIncomes,
+    saveDependent: (fields: DependentFields, id?: number) =>
+      persist((state) => saveDependent(state, fields, id)),
+    saveDependentWithIncomes: (
+      fields: DependentFields,
+      incomes: readonly RegisteredIncomeEntry[],
+      id?: number,
+    ) => persist((state) => saveDependentWithIncomes(state, fields, incomes, id)),
     incomesForDependent,
-    removeDependent,
+    removeDependent: (id: number) => persist((state) => removeDependent(state, id)),
     expensesForDependent,
     expenses,
-    addExpense,
-    updateExpense,
-    removeExpense,
+    addExpense: (expense: Omit<RegisteredExpense, 'id'>) =>
+      persist((state) => addExpense(state, expense)),
+    updateExpense: (expense: RegisteredExpense) =>
+      persist((state) => updateExpense(state, expense)),
+    removeExpense: (id: number) => persist((state) => removeExpense(state, id)),
     declarationData,
     deductionEffects,
     pendingDependents,
@@ -779,7 +959,7 @@ export const useIncomeStore = defineStore('income', () => {
     addDraftIncome,
     fillDraftIncomeFromSalary,
     removeDraftIncome,
-    saveDraft,
+    saveDraft: () => persist((state) => saveDraft(state)),
     clearAccountData,
   }
 })

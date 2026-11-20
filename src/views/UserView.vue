@@ -774,7 +774,7 @@ async function signOut() {
             <h2 id="profile-dependents-title">
               Meus dependentes <span class="account-badge">{{ dependents.length }}</span>
             </h2>
-            <p>Dependentes cadastrados nesta sessão.</p>
+            <p>Dependentes salvos na sua declaração de 2026.</p>
           </div>
           <RouterLink :to="{ name: 'dependents' }" class="text-button"
             >Gerenciar dependentes</RouterLink
@@ -843,9 +843,9 @@ async function signOut() {
     >
       <h2 id="delete-title">Excluir sua conta?</h2>
       <p id="delete-description">
-        Você realmente deseja excluir sua conta? Seu acesso e seus dados de perfil serão removidos
-        permanentemente. Os rendimentos e dependentes desta sessão também serão apagados. Esta ação
-        não pode ser desfeita.
+        Você realmente deseja excluir sua conta? Seu acesso, perfil e dados salvos na declaração de
+        2026 — incluindo rendimentos, dependentes e despesas — serão removidos permanentemente. Esta
+        ação não pode ser desfeita.
       </p>
       <p v-if="deleteError" class="notice notice-error" role="alert">{{ deleteError }}</p>
       <p v-if="deleting" role="status">Excluindo sua conta…</p>

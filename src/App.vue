@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, onMounted, ref, watch } from 'vue'
 import { RouterView, useRoute } from 'vue-router'
+import { useIncomeStore } from '@/stores/income'
+import DataSyncStatus from '@/components/DataSyncStatus.vue'
 import BottomNav from '@/components/BottomNav.vue'
 import LoadingState from '@/components/LoadingState.vue'
 
 const UserView = defineAsyncComponent(() => import('@/views/UserView.vue'))
 const AppHeader = defineAsyncComponent(() => import('@/components/AppHeader.vue'))
+const income = useIncomeStore()
 const ready = ref(false)
 const isGuest = ref(true)
 const route = useRoute()
@@ -36,16 +39,28 @@ onMounted(() => {
   <main class="app-main" :class="signedIn ? 'app-main--shell' : 'app-main--centered'">
     <LoadingState v-if="!ready" message="Verificando sua sessão…" />
     <UserView v-else-if="isGuest && !route.meta.public" />
-    <RouterView v-else v-slot="{ Component }">
-      <Transition name="page" mode="out-in">
-        <component :is="Component" />
-      </Transition>
-    </RouterView>
+    <template v-else>
+      <DataSyncStatus v-if="signedIn" />
+      <div class="data-content" :aria-busy="income.saving">
+        <RouterView v-slot="{ Component }">
+          <Transition name="page" mode="out-in">
+            <component :is="Component" :key="income.accountId ?? 'guest'" />
+          </Transition>
+        </RouterView>
+      </div>
+    </template>
   </main>
   <BottomNav v-if="signedIn" />
 </template>
 
 <style scoped>
+.data-content {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+  width: 100%;
+}
 .app-main {
   display: grid;
   justify-items: center;

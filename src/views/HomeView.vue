@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import AppIcon from '@/components/AppIcon.vue'
 import EmptyState from '@/components/EmptyState.vue'
+import LoadingState from '@/components/LoadingState.vue'
 import PageCard from '@/components/PageCard.vue'
 import TaxEstimateCard from '@/components/TaxEstimateCard.vue'
 import { usePwaInstall } from '@/composables/usePwaInstall'
@@ -35,8 +36,11 @@ const toggleIncomeSummary = () => {
 <template>
   <div class="home">
     <PageCard eyebrow="Declaração de 2027 · ano-calendário 2026" title="Seu resultado">
+      <!-- Until the saved declaration is loaded there is nothing to say: no "nothing yet" for someone
+           who has data, and the sync banner explains a failed load. -->
+      <LoadingState v-if="incomeStore.loading" message="Carregando seus rendimentos…" />
       <EmptyState
-        v-if="!incomeStore.registrations.length"
+        v-else-if="incomeStore.loaded && !incomeStore.registrations.length"
         icon="income"
         title="Nenhum rendimento lançado"
         text="Lance o que você recebe por mês em cada fonte para ver se vai restituir ou pagar imposto."
@@ -44,7 +48,7 @@ const toggleIncomeSummary = () => {
         <RouterLink class="button" :to="{ name: 'income' }"> Lançar meus rendimentos </RouterLink>
       </EmptyState>
       <TaxEstimateCard
-        v-else
+        v-else-if="incomeStore.loaded"
         :estimate="incomeStore.taxEstimate"
         :payroll="incomeStore.payroll"
         :pending="incomeStore.estimateStatus"
