@@ -16,9 +16,30 @@ const router = createRouter({
       component: () => import('@/views/UserView.vue'),
     },
     {
+      path: '/privacidade',
+      name: 'privacy',
+      component: () => import('@/views/PrivacyView.vue'),
+      meta: { public: true },
+    },
+    {
       path: '/income',
       name: 'income',
       component: () => import('@/views/IncomeView.vue'),
+    },
+    {
+      path: '/dependentes',
+      name: 'dependents',
+      component: () => import('@/views/DependentsView.vue'),
+    },
+    {
+      path: '/despesas',
+      name: 'deductions',
+      component: () => import('@/views/DeductionsView.vue'),
+    },
+    {
+      path: '/menu',
+      name: 'menu',
+      component: () => import('@/views/MenuView.vue'),
     },
     {
       path: '/settings',

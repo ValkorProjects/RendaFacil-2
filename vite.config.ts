@@ -40,9 +40,8 @@ export default defineConfig({
         cleanupOutdatedCaches: true,
       },
       devOptions: {
-        // Serve the manifest and service worker during `npm run dev` too,
-        // so the app can be installed straight from localhost.
-        enabled: true,
+        // Keep development requests on the current Vite module graph.
+        enabled: false,
       },
     }),
   ],

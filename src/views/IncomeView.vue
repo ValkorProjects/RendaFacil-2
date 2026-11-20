@@ -1,15 +1,20 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, nextTick, ref, watch } from 'vue'
+import { RouterLink, useRouter } from 'vue-router'
 import { Money3Component } from 'v-money3'
+import ConfirmDelete from '@/components/ConfirmDelete.vue'
 import PageCard from '@/components/PageCard.vue'
+import TaxEstimateCard from '@/components/TaxEstimateCard.vue'
+import { parametros } from '@/irpf'
 import { cents, formatCurrency, moneyConfig } from '@/utils/currency'
 import {
-  dependentIncomeLabels,
+  exclusiveTaxation,
   incomeCategoryLabels,
-  type DependentIncome,
+  incomeEntryError,
+  incomeEntryWarnings,
+  sourceTitle,
   type IncomeCategory,
-  type RegisteredDependent,
+  type IncomeRegistration,
   type RegisteredIncomeEntry,
   useIncomeStore,
 } from '@/stores/income'
@@ -21,80 +26,117 @@ const incomeCategories = (Object.entries(incomeCategoryLabels) as [IncomeCategor
   }),
 )
 
-const dependentIncomeTypes = (
-  Object.entries(dependentIncomeLabels) as [DependentIncome, string][]
-).map(([value, label]) => ({
-  value,
-  label,
-}))
-
 const router = useRouter()
 const incomeStore = useIncomeStore()
-const editingRegistrationId = ref<number | null>(null)
-const editingIncomes = ref<RegisteredIncomeEntry[]>([])
-const editingDependents = ref<RegisteredDependent[]>([])
+const dependentDeduction = parametros(2026).dependente
+const confirmingDeleteId = ref<number | null>(null)
+const salaryErrors = ref<Record<number, string>>({})
+const isEditing = computed(() => incomeStore.draftEditingRegistrationId !== null)
 
-const updateDependentCount = (event: Event) => {
-  incomeStore.setDraftDependentCount(Number((event.target as HTMLInputElement).value))
+// The payslip checks use the declaration's dependents for the holder's sources.
+const incomeWarnings = (income: RegisteredIncomeEntry) =>
+  incomeEntryWarnings(income, income.dependentId == null ? incomeStore.dependentCount : 0)
+
+const fillFromSalary = (id: number) => {
+  salaryErrors.value[id] = incomeStore.fillDraftIncomeFromSalary(id)
 }
 
-const updateHasDependents = (event: Event) => {
-  incomeStore.setDraftHasDependents((event.target as HTMLInputElement).checked)
+// "Empresa A e Empresa B": the sources a lançamento holds, for its delete confirmation.
+const sourceList = (registration: IncomeRegistration) => {
+  const names = registration.incomes.map(sourceTitle)
+  const last = names[names.length - 1] ?? ''
+  return names.length > 1 ? `${names.slice(0, -1).join(', ')} e ${last}` : last
 }
 
-const startInlineEdit = (registrationId: number) => {
-  const registration = incomeStore.registrations.find((item) => item.id === registrationId)
-  if (!registration) return
-
-  editingRegistrationId.value = registrationId
-  editingIncomes.value = registration.incomes.map((income) => ({ ...income }))
-  editingDependents.value = registration.dependents.map((dependent) => ({ ...dependent }))
+const setConfirmingDelete = (registrationId: number, open: boolean) => {
+  if (open) confirmingDeleteId.value = registrationId
+  else if (confirmingDeleteId.value === registrationId) confirmingDeleteId.value = null
 }
 
-const cancelInlineEdit = () => {
-  editingRegistrationId.value = null
-  editingIncomes.value = []
-  editingDependents.value = []
+const goToForm = async () => {
+  await nextTick()
+  document.getElementById('income-title')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 
-const canSaveInlineEdit = computed(
-  () =>
-    editingIncomes.value.some((income) => cents(income.amount) > 0) ||
-    editingDependents.value.some((dependent) => cents(dependent.amount) > 0),
+// Editing loads the saved lançamento into the form, with every field.
+const startEdit = (registrationId: number) => {
+  confirmingDeleteId.value = null
+  if (incomeStore.beginEditRegistration(registrationId)) void goToForm()
+}
+
+// "Lançar rendimento" starts a new one: leave edit mode first, or saving would overwrite the
+// lançamento that was open.
+const newIncome = async () => {
+  if (isEditing.value) incomeStore.cancelEdit()
+  await goToForm()
+}
+
+// The count is saved when the field is committed (change, not every keystroke): each save is a
+// round trip, and the saved number only changes after the server confirms it.
+const expectedInput = ref(String(incomeStore.expectedStatements))
+watch(
+  () => incomeStore.expectedStatements,
+  (count) => (expectedInput.value = String(count)),
 )
-
-const updateEditingIncomeAmount = (index: number, amount: string | number) => {
-  const income = editingIncomes.value[index]
-  if (income) income.amount = String(amount)
+const saveExpected = async () => {
+  await incomeStore.setExpectedStatements(Number(expectedInput.value))
+  // The store keeps the number between 0 and 20: show the one it kept ("25" typed at 20 stays 20).
+  expectedInput.value = String(incomeStore.expectedStatements)
 }
 
-const updateEditingDependentAmount = (index: number, amount: string | number) => {
-  const dependent = editingDependents.value[index]
-  if (dependent) dependent.amount = String(amount)
+const saveIncome = async () => {
+  if (incomeStore.saving) return
+  const wasEditing = isEditing.value
+  if (!(await incomeStore.saveDraft())) return
+  if (!wasEditing) router.push({ name: 'home' })
 }
 
-const saveInlineEdit = () => {
-  if (editingRegistrationId.value === null || !canSaveInlineEdit.value) return
-
-  incomeStore.updateRegistration({
-    id: editingRegistrationId.value,
-    incomes: editingIncomes.value.filter((income) => cents(income.amount) > 0),
-    dependents: editingDependents.value.filter((dependent) => cents(dependent.amount) > 0),
-  })
-  cancelInlineEdit()
-}
-
-const saveIncomeAndReturn = () => {
-  if (incomeStore.saveDraft()) router.push({ name: 'home' })
+const removeRegistration = async (registrationId: number) => {
+  if (incomeStore.saving) return
+  if (await incomeStore.removeRegistration(registrationId)) confirmingDeleteId.value = null
 }
 </script>
 
 <template>
   <div class="income-page">
-    <PageCard eyebrow="Declaração anual" title="Cadastro de rendimentos">
+    <PageCard eyebrow="Declaração de 2027 · ano-calendário 2026" title="Rendas">
       <p class="intro">
-        Informe os valores mensais recebidos para preparar sua declaração anual de IRPF.
+        Informe os valores mensais de cada fonte, como estão no holerite, e acompanhe a estimativa
+        ao longo do ano: ela conta 12 meses iguais e muda enquanto você digita. Quando o informe de
+        rendimentos chegar, use os valores do ano divididos por 12.
       </p>
+
+      <section class="statements-summary glass" aria-labelledby="statements-title">
+        <div class="section-heading">
+          <div>
+            <p class="section-kicker">Total</p>
+            <h2 id="statements-title">Rendimentos no ano</h2>
+          </div>
+          <strong class="statements-total">{{ formatCurrency(incomeStore.taxableTotal) }}</strong>
+        </div>
+        <p class="statements-counter" role="status">
+          {{ incomeStore.statementCount }} de {{ incomeStore.expectedStatements }}
+          {{ incomeStore.expectedStatements === 1 ? 'empresa lançada' : 'empresas lançadas' }}
+        </p>
+        <label class="field-label" for="expected-statements">
+          Quantas empresas te pagaram salário em 2026?
+        </label>
+        <input
+          id="expected-statements"
+          v-model="expectedInput"
+          class="field-control count-control"
+          type="number"
+          min="0"
+          max="20"
+          inputmode="numeric"
+          :disabled="!incomeStore.loaded"
+          @change="saveExpected"
+        />
+        <button class="add-button" type="button" @click="newIncome">
+          <span aria-hidden="true">+</span>
+          Lançar rendimento
+        </button>
+      </section>
 
       <section
         v-if="incomeStore.registrations.length"
@@ -103,103 +145,93 @@ const saveIncomeAndReturn = () => {
       >
         <div class="section-heading">
           <div>
-            <p class="section-kicker">Cadastros</p>
-            <h2 id="saved-income-title">Rendimentos adicionados</h2>
+            <p class="section-kicker">Lançados</p>
+            <h2 id="saved-income-title">Fontes pagadoras</h2>
           </div>
           <span class="section-status">{{ incomeStore.registrations.length }}</span>
         </div>
         <div class="saved-registration-list">
           <article
-            v-for="registration in incomeStore.registrations"
+            v-for="(registration, registrationIndex) in incomeStore.registrations"
             :key="registration.id"
             class="saved-registration"
-            :class="{ editing: editingRegistrationId === registration.id }"
+            :class="{ editing: incomeStore.draftEditingRegistrationId === registration.id }"
           >
-            <div class="entry-topline">
-              <span>Cadastro de rendimentos</span>
-              <div class="saved-actions">
-                <template v-if="editingRegistrationId === registration.id">
-                  <button
-                    class="edit-button"
-                    type="button"
-                    :disabled="!canSaveInlineEdit"
-                    @click="saveInlineEdit"
-                  >
-                    Salvar
-                  </button>
-                  <button class="remove-button" type="button" @click="cancelInlineEdit">
-                    Cancelar
-                  </button>
+            <div
+              v-for="income in registration.incomes"
+              :key="income.id"
+              class="saved-income source-card"
+            >
+              <div class="entry-topline">
+                <strong class="source-name">{{ sourceTitle(income) }}</strong>
+                <span class="source-owner">{{ incomeStore.incomeOwner(income) }}</span>
+              </div>
+              <div class="saved-entry">
+                <span>Rendimento mensal</span>
+                <strong>{{ formatCurrency(cents(income.amount)) }}</strong>
+              </div>
+              <div class="saved-entry saved-entry-detail">
+                <span>INSS no mês</span>
+                <strong>{{ formatCurrency(cents(income.inss)) }}</strong>
+              </div>
+              <div class="saved-entry saved-entry-detail">
+                <span>IR retido no mês</span>
+                <strong>{{ formatCurrency(cents(income.irrf)) }}</strong>
+              </div>
+              <p v-if="exclusiveTaxation(income)" class="exclusive-note">
+                <template v-if="cents(income.thirteenth ?? '')">
+                  13º {{ formatCurrency(cents(income.thirteenth ?? '')) }}
                 </template>
-                <button
-                  v-else
-                  class="edit-button"
-                  type="button"
-                  :aria-label="`Editar cadastro de rendimentos ${registration.id}`"
-                  @click="startInlineEdit(registration.id)"
+                <template
+                  v-if="cents(income.thirteenth ?? '') && cents(income.profitSharing ?? '')"
                 >
-                  Editar
-                </button>
-                <button
-                  v-if="editingRegistrationId !== registration.id"
-                  class="remove-button"
-                  type="button"
-                  :aria-label="`Remover cadastro de rendimentos ${registration.id}`"
-                  @click="incomeStore.removeRegistration(registration.id)"
-                >
-                  Remover
-                </button>
-              </div>
+                  ·
+                </template>
+                <template v-if="cents(income.profitSharing ?? '')">
+                  PLR {{ formatCurrency(cents(income.profitSharing ?? '')) }}
+                </template>
+                — valores do ano, não entram no ajuste
+              </p>
             </div>
-            <div class="saved-entry-list">
-              <div
-                v-for="(income, index) in registration.incomes"
-                :key="income.id"
-                class="saved-entry"
+            <div
+              class="saved-actions"
+              :class="{ confirming: confirmingDeleteId === registration.id }"
+            >
+              <button
+                v-if="confirmingDeleteId !== registration.id"
+                class="edit-button"
+                type="button"
+                :aria-label="`Editar lançamento ${registrationIndex + 1}`"
+                @click="startEdit(registration.id)"
               >
-                <span>{{ incomeCategoryLabels[income.category] }}</span>
-                <Money3Component
-                  v-if="editingRegistrationId === registration.id"
-                  :model-value="editingIncomes[index]?.amount ?? ''"
-                  class="saved-money-input"
-                  v-bind="moneyConfig"
-                  inputmode="numeric"
-                  aria-label="Editar valor do rendimento"
-                  @update:model-value="updateEditingIncomeAmount(index, $event)"
-                />
-                <strong v-else>{{ formatCurrency(cents(income.amount)) }}</strong>
-              </div>
-              <div
-                v-for="(dependent, index) in registration.dependents.filter(
-                  (item) => item.incomeType !== 'none',
-                )"
-                :key="dependent.id"
-                class="saved-entry"
+                Editar
+              </button>
+              <ConfirmDelete
+                :open="confirmingDeleteId === registration.id"
+                :item-label="`o lançamento ${registrationIndex + 1}`"
+                @update:open="setConfirmingDelete(registration.id, $event)"
+                @confirm="removeRegistration(registration.id)"
               >
-                <span>{{ dependentIncomeLabels[dependent.incomeType] }}</span>
-                <Money3Component
-                  v-if="editingRegistrationId === registration.id"
-                  :model-value="editingDependents[index]?.amount ?? ''"
-                  class="saved-money-input"
-                  v-bind="moneyConfig"
-                  inputmode="numeric"
-                  aria-label="Editar valor do rendimento do dependente"
-                  @update:model-value="updateEditingDependentAmount(index, $event)"
-                />
-                <strong v-else>{{ formatCurrency(cents(dependent.amount)) }}</strong>
-              </div>
+                <p>Saem da estimativa: {{ sourceList(registration) }}.</p>
+              </ConfirmDelete>
             </div>
           </article>
         </div>
+        <p v-if="incomeStore.exclusiveTaxationTotal" class="field-help">
+          13º e PLR somam {{ formatCurrency(incomeStore.exclusiveTaxationTotal) }} no ano e não
+          entram no ajuste: têm tributação exclusiva na fonte.
+        </p>
       </section>
 
       <section class="form-section glass" aria-labelledby="income-title">
         <div class="section-heading">
           <div>
-            <p class="section-kicker">01</p>
-            <h2 id="income-title">Rendimentos do titular</h2>
+            <p class="section-kicker">{{ isEditing ? 'Editando' : 'Novo' }}</p>
+            <h2 id="income-title">
+              {{ isEditing ? 'Editar lançamento' : 'Lançar rendimento' }}
+            </h2>
           </div>
-          <span class="section-status">Obrigatório</span>
+          <span class="section-status">Valores mensais</span>
         </div>
 
         <div class="entry-list">
@@ -209,17 +241,47 @@ const saveIncomeAndReturn = () => {
             class="entry-card"
           >
             <div class="entry-topline">
-              <span>Fonte de renda {{ index + 1 }}</span>
+              <span>Fonte pagadora {{ index + 1 }}</span>
               <button
                 v-if="incomeStore.draftIncomes.length > 1"
                 class="remove-button"
                 type="button"
-                :aria-label="`Remover fonte de renda ${index + 1}`"
+                :aria-label="`Remover fonte pagadora ${index + 1}`"
                 @click="incomeStore.removeDraftIncome(income.id)"
               >
                 Remover
               </button>
             </div>
+            <label class="field-label" :for="`income-employer-${income.id}`">
+              Nome da empresa <small class="informe-ref">Informe: quadro 1</small>
+            </label>
+            <input
+              :id="`income-employer-${income.id}`"
+              v-model="income.employer"
+              class="field-control"
+              autocomplete="organization"
+              maxlength="80"
+            />
+            <label class="field-label" :for="`income-owner-${income.id}`"
+              >De quem é o rendimento?</label
+            >
+            <select
+              :id="`income-owner-${income.id}`"
+              v-model="income.dependentId"
+              class="field-control"
+            >
+              <option :value="null">Titular</option>
+              <option
+                v-for="dependent in incomeStore.dependents"
+                :key="dependent.id"
+                :value="dependent.id"
+              >
+                {{ dependent.apelido
+                }}{{
+                  dependent.em_outra_declaracao ? ' (em outra declaração — não entra na conta)' : ''
+                }}
+              </option>
+            </select>
             <label class="field-label" :for="`income-type-${income.id}`">Categoria</label>
             <select
               :id="`income-type-${income.id}`"
@@ -234,7 +296,10 @@ const saveIncomeAndReturn = () => {
                 {{ category.label }}
               </option>
             </select>
-            <label class="field-label" :for="`income-amount-${income.id}`">Valor mensal</label>
+            <label class="field-label" :for="`income-amount-${income.id}`">
+              Valor mensal
+              <small class="informe-ref">Informe: quadro 3, linha 01 ÷ 12</small>
+            </label>
             <Money3Component
               :id="`income-amount-${income.id}`"
               class="field-control currency-input"
@@ -242,101 +307,152 @@ const saveIncomeAndReturn = () => {
               autocomplete="off"
               v-model="income.amount"
               v-bind="moneyConfig"
-              aria-label="Valor mensal em reais"
             />
+            <div class="withheld-grid">
+              <div>
+                <label class="field-label" :for="`income-inss-${income.id}`">
+                  INSS descontado no mês
+                  <small class="informe-ref">Informe: quadro 3, linha 02 ÷ 12</small>
+                </label>
+                <Money3Component
+                  :id="`income-inss-${income.id}`"
+                  class="field-control currency-input"
+                  inputmode="numeric"
+                  autocomplete="off"
+                  v-model="income.inss"
+                  v-bind="moneyConfig"
+                />
+              </div>
+              <div>
+                <label class="field-label" :for="`income-irrf-${income.id}`">
+                  IR retido na fonte no mês
+                  <small class="informe-ref">Informe: quadro 3, linha 05 ÷ 12</small>
+                </label>
+                <Money3Component
+                  :id="`income-irrf-${income.id}`"
+                  class="field-control currency-input"
+                  inputmode="numeric"
+                  autocomplete="off"
+                  v-model="income.irrf"
+                  v-bind="moneyConfig"
+                />
+              </div>
+            </div>
+            <template v-if="income.category === 'clt'">
+              <button
+                class="add-button salary-button"
+                type="button"
+                :disabled="!cents(income.amount)"
+                @click="fillFromSalary(income.id)"
+              >
+                Calcular INSS e IR pelo salário
+              </button>
+              <p class="field-help">
+                Supõe o mesmo salário todos os meses e considera os dependentes. A pensão paga é
+                lançada em Despesas e entra no ajuste da declaração, não nesta simulação mensal.
+              </p>
+            </template>
+            <p v-if="salaryErrors[income.id]" class="field-error" role="alert">
+              Não foi possível calcular pelo salário. {{ salaryErrors[income.id] }}
+            </p>
+
+            <fieldset class="exclusive-fields">
+              <legend>
+                13º e PLR <small class="informe-ref">valores do ano, não entram no ajuste</small>
+              </legend>
+              <div class="withheld-grid">
+                <div>
+                  <label class="field-label" :for="`income-thirteenth-${income.id}`">
+                    13º salário <small class="informe-ref">Informe: quadro 5, linha 01</small>
+                  </label>
+                  <Money3Component
+                    :id="`income-thirteenth-${income.id}`"
+                    class="field-control currency-input"
+                    inputmode="numeric"
+                    autocomplete="off"
+                    :model-value="income.thirteenth ?? ''"
+                    @update:model-value="income.thirteenth = String($event)"
+                    v-bind="moneyConfig"
+                  />
+                </div>
+                <div>
+                  <label class="field-label" :for="`income-thirteenth-irrf-${income.id}`">
+                    IRRF sobre o 13º <small class="informe-ref">Informe: quadro 5, linha 02</small>
+                  </label>
+                  <Money3Component
+                    :id="`income-thirteenth-irrf-${income.id}`"
+                    class="field-control currency-input"
+                    inputmode="numeric"
+                    autocomplete="off"
+                    :model-value="income.thirteenthIrrf ?? ''"
+                    @update:model-value="income.thirteenthIrrf = String($event)"
+                    v-bind="moneyConfig"
+                  />
+                </div>
+              </div>
+              <label class="field-label" :for="`income-plr-${income.id}`">
+                PLR, se houver
+                <small class="informe-ref">Informe: quadro 5, linha 03 ("Outros")</small>
+              </label>
+              <Money3Component
+                :id="`income-plr-${income.id}`"
+                class="field-control currency-input"
+                inputmode="numeric"
+                autocomplete="off"
+                :model-value="income.profitSharing ?? ''"
+                @update:model-value="income.profitSharing = String($event)"
+                v-bind="moneyConfig"
+              />
+            </fieldset>
+
+            <p v-if="incomeEntryError(income)" class="field-error" role="alert">
+              {{ incomeEntryError(income) }}
+            </p>
+            <p
+              v-for="warning in incomeWarnings(income)"
+              :key="warning"
+              class="field-warning"
+              role="status"
+            >
+              {{ warning }}
+            </p>
           </article>
         </div>
 
+        <p class="field-help">
+          A pensão alimentícia e o plano de saúde descontados em folha (no informe, quadro 3, linha
+          04, e quadro 7) vão em <RouterLink :to="{ name: 'deductions' }">Despesas</RouterLink>, a
+          cada pagamento, e não aqui.
+        </p>
+
+        <p v-if="incomeStore.summaryInssWarning" class="field-warning" role="status">
+          {{ incomeStore.summaryInssWarning }}
+        </p>
+
         <button class="add-button" type="button" @click="incomeStore.addDraftIncome">
           <span aria-hidden="true">+</span>
-          Adicionar outro rendimento
+          Adicionar outra fonte neste lançamento
         </button>
       </section>
 
       <section class="form-section glass" aria-labelledby="dependents-title">
-        <div class="section-heading">
-          <div>
-            <p class="section-kicker">02</p>
-            <h2 id="dependents-title">Dependentes</h2>
-          </div>
-          <span class="section-status optional">Opcional</span>
-        </div>
-
-        <div class="toggle-row">
-          <div>
-            <strong>Possui dependentes?</strong>
-            <p>Adicione as informações de renda de cada dependente.</p>
-          </div>
-          <label class="switch">
-            <input
-              :checked="incomeStore.draftHasDependents"
-              type="checkbox"
-              @change="updateHasDependents"
-            />
-            <span aria-hidden="true" />
-            <span class="sr-only">Possui dependentes?</span>
-          </label>
-        </div>
-
-        <div v-if="incomeStore.draftHasDependents" class="dependents-content">
-          <label class="field-label" for="dependent-count">Quantos dependentes?</label>
-          <input
-            id="dependent-count"
-            :value="incomeStore.draftDependentCount"
-            class="field-control count-control"
-            type="number"
-            min="0"
-            max="20"
-            inputmode="numeric"
-            @input="updateDependentCount"
-          />
-
-          <div v-if="incomeStore.draftDependents.length" class="dependent-list">
-            <article
-              v-for="(dependent, index) in incomeStore.draftDependents"
-              :key="dependent.id"
-              class="dependent-card"
-            >
-              <div class="dependent-number">{{ String(index + 1).padStart(2, '0') }}</div>
-              <div class="dependent-fields">
-                <label class="field-label" :for="`dependent-type-${dependent.id}`">
-                  Dependente {{ index + 1 }} · Tipo de renda
-                </label>
-                <select
-                  :id="`dependent-type-${dependent.id}`"
-                  v-model="dependent.incomeType"
-                  class="field-control"
-                >
-                  <option
-                    v-for="incomeType in dependentIncomeTypes"
-                    :key="incomeType.value"
-                    :value="incomeType.value"
-                  >
-                    {{ incomeType.label }}
-                  </option>
-                </select>
-                <template v-if="dependent.incomeType !== 'none'">
-                  <label class="field-label" :for="`dependent-amount-${dependent.id}`"
-                    >Valor mensal</label
-                  >
-                  <Money3Component
-                    :id="`dependent-amount-${dependent.id}`"
-                    class="field-control currency-input"
-                    inputmode="numeric"
-                    autocomplete="off"
-                    v-model="dependent.amount"
-                    v-bind="moneyConfig"
-                    aria-label="Valor mensal do dependente em reais"
-                  />
-                  <p v-if="dependent.incomeType === 'pensao'" class="exempt-note">
-                    Este rendimento é isento.
-                  </p>
-                </template>
-              </div>
-            </article>
-          </div>
-          <p v-else class="empty-state">Informe a quantidade para adicionar os dependentes.</p>
-        </div>
+        <h2 id="dependents-title">Possui dependentes?</h2>
+        <p>
+          Cadastre cada pessoa pelo apelido. Cada dependente válido deduz
+          {{ formatCurrency(dependentDeduction) }} por ano no modelo completo.
+        </p>
+        <p>
+          {{ incomeStore.dependents.length }} cadastrado(s),
+          {{ incomeStore.dependentCount }} válido(s) para esta declaração.
+        </p>
+        <RouterLink class="button" :to="{ name: 'dependents' }"
+          >Cadastrar ou gerenciar dependentes</RouterLink
+        >
+        <p v-if="incomeStore.pendingDependents.length" class="field-warning" role="status">
+          Estimativa provisória: falta lançar o informe de
+          {{ incomeStore.pendingDependents.map((dependent) => dependent.apelido).join(', ') }}.
+          Selecione o apelido em “De quem é o rendimento?” e salve o lançamento.
+        </p>
       </section>
 
       <footer class="summary-card" aria-labelledby="summary-title">
@@ -349,29 +465,48 @@ const saveIncomeAndReturn = () => {
         </div>
         <dl class="summary-list">
           <div>
-            <dt>Total anual de Rendimentos Tributáveis</dt>
+            <dt>
+              Total anual de Rendimentos Tributáveis
+              <small>Titular + rendas tributáveis dos dependentes</small>
+            </dt>
             <dd>{{ formatCurrency(incomeStore.summaryTaxableTotal) }}</dd>
-            <small>Titular + rendas tributáveis dos dependentes</small>
           </div>
           <div>
-            <dt>Total anual de Rendimentos Isentos</dt>
-            <dd>{{ formatCurrency(incomeStore.summaryExemptTotal) }}</dd>
-            <small>Pensão alimentícia</small>
+            <dt>
+              Total anual de Rendimentos Isentos
+              <small>Pensão alimentícia</small>
+            </dt>
+            <dd>{{ formatCurrency(incomeStore.exemptTotal) }}</dd>
           </div>
           <div>
-            <dt>Dependentes para dedução</dt>
-            <dd>{{ incomeStore.draftHasDependents ? incomeStore.draftDependentCount : 0 }}</dd>
-            <small>Quantidade informada</small>
+            <dt>
+              Dependentes para dedução
+              <small>Valem para a declaração inteira</small>
+            </dt>
+            <dd>{{ incomeStore.dependentCount }}</dd>
           </div>
         </dl>
       </footer>
+      <TaxEstimateCard
+        :estimate="incomeStore.summaryTaxEstimate"
+        :payroll="incomeStore.summaryPayroll"
+      />
       <button
         class="button add-registration-button"
         type="button"
-        :disabled="!incomeStore.canSaveDraft"
-        @click="saveIncomeAndReturn"
+        :disabled="!incomeStore.canSaveDraft || !incomeStore.loaded"
+        :aria-disabled="incomeStore.saving"
+        @click="saveIncome"
       >
-        Adicionar
+        {{ incomeStore.saving ? 'Salvando…' : isEditing ? 'Salvar alterações' : 'Adicionar' }}
+      </button>
+      <button
+        v-if="isEditing"
+        class="button secondary add-registration-button"
+        type="button"
+        @click="incomeStore.cancelEdit"
+      >
+        Cancelar edição
       </button>
     </PageCard>
   </div>
@@ -527,14 +662,30 @@ h2 {
   text-transform: uppercase;
 }
 
+.saved-registration .entry-topline {
+  flex-wrap: wrap;
+}
+
 .saved-actions {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 0.25rem;
+  /* Stays on the right when the row wraps on a narrow phone. */
+  margin-left: auto;
+}
+
+/* The delete confirmation takes the whole row under the title. */
+.saved-actions.confirming {
+  flex-basis: 100%;
+  text-transform: none;
+  font-weight: 400;
+  font-size: 1rem;
 }
 
 .remove-button {
-  padding: 0;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  padding: 0 0.5rem;
   border: 0;
   background: none;
   color: var(--color-accent);
@@ -544,7 +695,9 @@ h2 {
 }
 
 .edit-button {
-  padding: 0;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  padding: 0 0.5rem;
   border: 0;
   background: none;
   color: var(--color-text-muted);
@@ -581,7 +734,8 @@ select.field-control option {
 .currency-input {
   max-width: 100%;
   min-width: 0;
-  color: var(--color-accent);
+  /* The plain accent is just under 4.5:1 on the dark input background */
+  color: color-mix(in srgb, var(--color-accent), var(--color-text) 30%);
   font-size: clamp(0.9rem, 4vw, 1.15rem);
   font-weight: 750;
   text-align: right;
@@ -591,6 +745,7 @@ select.field-control option {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
+  min-height: 2.75rem;
   margin-top: 1rem;
   padding: 0.5rem 0;
   border: 0;
@@ -624,11 +779,14 @@ select.field-control option {
   font-size: 0.8rem;
 }
 
+/* The padding makes the touch target 44 px tall (RF-09) without changing the drawn toggle. */
 .switch {
   position: relative;
   display: block;
+  box-sizing: content-box;
   width: 3.2rem;
   height: 1.8rem;
+  padding: 0.5rem 0.25rem;
   flex-shrink: 0;
 }
 
@@ -641,7 +799,7 @@ select.field-control option {
 
 .switch span:not(.sr-only) {
   position: absolute;
-  inset: 0;
+  inset: 0.5rem 0.25rem;
   border-radius: 999px;
   background: var(--color-text-muted);
   cursor: pointer;
@@ -666,6 +824,12 @@ select.field-control option {
 
 .switch input:checked + span::after {
   transform: translateX(1.4rem);
+}
+
+/* The real checkbox is invisible, so the drawn toggle shows the keyboard focus. */
+.switch input:focus-visible + span {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
 }
 
 .dependents-content {
@@ -716,7 +880,8 @@ select.field-control option {
 
 .summary-card .section-kicker,
 .summary-card small {
-  color: color-mix(in srgb, var(--color-on-accent), transparent 22%);
+  /* 10% keeps the muted text above 4.5:1 on the accent background */
+  color: color-mix(in srgb, var(--color-on-accent), transparent 10%);
 }
 
 .summary-badge {
@@ -747,7 +912,7 @@ select.field-control option {
   min-width: 0;
   max-width: 100%;
   overflow-wrap: anywhere;
-  grid-row: span 2;
+  align-self: center;
   margin: 0;
   font-size: 1.15rem;
   font-weight: 800;
@@ -756,6 +921,7 @@ select.field-control option {
 
 .summary-list small {
   display: block;
+  font-weight: 400;
 }
 
 .sr-only {
@@ -780,6 +946,72 @@ select.field-control option {
   }
 }
 
+.saved-income {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.dependent-income-badge {
+  justify-self: start;
+  max-width: 100%;
+  margin-bottom: 0.35rem;
+  padding: 0.3rem 0.65rem;
+  border: 1px solid color-mix(in srgb, var(--color-accent), transparent 70%);
+  border-radius: 0.6rem;
+  background: color-mix(in srgb, var(--color-accent), transparent 92%);
+  color: var(--color-accent);
+  font-size: 0.75rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.saved-entry-detail {
+  padding-left: 0.75rem;
+  font-size: 0.76rem;
+}
+
+.withheld-grid {
+  display: grid;
+  gap: 0 0.75rem;
+}
+
+.field-help {
+  margin-top: 0.35rem;
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+}
+
+.field-error {
+  margin-top: 0.35rem;
+  color: var(--color-danger);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.field-warning {
+  margin-top: 0.35rem;
+  padding-left: 0.6rem;
+  border-left: 3px solid var(--color-accent);
+  color: var(--color-text);
+  font-size: 0.8rem;
+}
+
+.salary-button {
+  margin-top: 0.5rem;
+  min-height: 2.75rem;
+}
+
+.salary-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+@media (min-width: 30rem) {
+  .withheld-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 .add-registration-button {
   width: 100%;
 }
@@ -787,5 +1019,57 @@ select.field-control option {
 .add-registration-button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+.statements-summary {
+  display: grid;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 1.25rem;
+  border-radius: 1.25rem;
+  text-align: left;
+}
+
+.statements-total {
+  font-size: 1.25rem;
+}
+
+.statements-counter {
+  font-weight: 600;
+}
+
+.informe-ref {
+  display: block;
+  color: var(--color-text-muted);
+  font-size: 0.8125rem;
+  font-weight: 400;
+}
+
+.exclusive-fields {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0.75rem 0 0;
+  padding: 0.75rem;
+  border: 1px dashed var(--glass-border, rgb(127 127 127 / 0.35));
+  border-radius: 0.875rem;
+}
+
+.exclusive-fields legend {
+  padding: 0 0.25rem;
+  font-weight: 600;
+}
+
+.exclusive-note {
+  margin-top: 0.25rem;
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}
+
+.source-card + .source-card {
+  margin-top: 0.75rem;
+}
+
+.source-owner {
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
 }
 </style>
